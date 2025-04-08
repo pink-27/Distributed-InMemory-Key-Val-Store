@@ -86,10 +86,4 @@ If the key is not found:
 - Eventually scale to a distributed architecture
 
 ---
-
 This was built to get hands-on with TCP sockets, threads, and Java I/O — not trying to reinvent Redis... yet.
-```
-
----
-
-Let me know if you want badges, project structure, or installation instructions.
