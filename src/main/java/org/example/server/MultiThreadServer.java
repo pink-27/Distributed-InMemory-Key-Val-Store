@@ -1,11 +1,13 @@
 package org.example.server;
 
 import org.example.Store.inMemoryStore;
+import org.example.logger.FileLogger;
 import org.json.JSONObject;
 
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class MultiThreadServer extends Thread {
     private ServerSocket serverSocket;
@@ -14,13 +16,17 @@ public class MultiThreadServer extends Thread {
     private BufferedReader reader;
     private BufferedWriter writer;
     private String STOP="##";
+    FileLogger logger;
+    ReentrantLock reenLock;
     int clientID;
 
-    public MultiThreadServer(ServerSocket serverSocket,Socket clientSocket,inMemoryStore inMemoryStore,int id){
+    public MultiThreadServer(ServerSocket serverSocket, Socket clientSocket, inMemoryStore inMemoryStore, FileLogger logger, ReentrantLock reenLock, int id){
         this.serverSocket=serverSocket;
         this.store=inMemoryStore;
         this.clientSocket=clientSocket;
         this.clientID=id;
+        this.logger=logger;
+        this.reenLock=reenLock;
         System.out.println("ClientHandler-" + clientID);
     }
 
@@ -87,8 +93,9 @@ public class MultiThreadServer extends Thread {
         writer.flush();
 
     }
-    public void updateKeyValue(String Key, String Value){
+    public void updateKeyValue(String Key, String Value) throws IOException {
         store.updateKeyVal(Key,Value);
+        logger.writeToLog(Key,Value);
     }
 
 }

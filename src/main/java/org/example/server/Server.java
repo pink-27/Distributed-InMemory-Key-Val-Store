@@ -1,10 +1,12 @@
 package org.example.server;
 
 import org.example.Store.inMemoryStore;
+import org.example.logger.FileLogger;
 
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class Server {
 
@@ -14,12 +16,16 @@ public class Server {
     private BufferedReader reader;
     private BufferedWriter writer;
     public static int PORT = 3001;
-    private String STOP = "##";
+    FileLogger logger;
+    ReentrantLock reenLock;
 
     public Server() {
         try {
             serverSocket = new ServerSocket(PORT);
             store = new inMemoryStore();
+            reenLock = new ReentrantLock();
+            logger = new FileLogger("logs",store,reenLock);
+            logger.recoverFromLog();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -30,7 +36,7 @@ public class Server {
             int clientID=0;
             while (true) {
                 clientSocket = serverSocket.accept();
-                MultiThreadServer threadServer = new MultiThreadServer(serverSocket, clientSocket, store, ++clientID);
+                MultiThreadServer threadServer = new MultiThreadServer(serverSocket, clientSocket, store,logger,reenLock, ++clientID);
                 threadServer.start();
             }
         } catch (IOException e) {
