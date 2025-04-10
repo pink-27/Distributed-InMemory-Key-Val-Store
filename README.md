@@ -1,89 +1,94 @@
 
 
-# Simple In-Memory Key-Value Store (V1)
+# Java Key-Value Store – V2
 
-This is a basic single-node, in-memory key-value store built in Java.  
-It supports `GET` and `PUT` operations over TCP using a custom protocol based on JSON.
+A lightweight in-memory key-value store in Java. It handles multiple clients, writes to disk so it doesn't forget things, and generally tries to keep its act together. Thread-safe. Mostly polite.
 
 ## Features
 
-- In-memory data storage using `ConcurrentHashMap`
-- TCP server-client communication over sockets
-- Supports multiple clients manually (one at a time)
-- Thread-safe storage operations
-- JSON-based message format
+- Basic `SET` and `GET` over TCP
+- One thread per client (we're friendly like that)
+- JSON-based protocol — because YAML felt like overkill
+- Write-ahead logging to disk
+- Crash recovery on startup
 
-## Usage
+## Project Structure
 
-### Server
-Start the server:
+```
+src/
+├── org.example.Store/       // In-memory storage logic
+├── org.example.logger/      // File-based logger
+└── org.example.server/      // Server + per-client threading
+```
+
+## Protocol
+
+All messages are JSON, sent over a plain TCP connection.
+
+### `SET` request
+```json
+{ "key": "exampleKey", "value": "exampleValue" }
+```
+
+### `GET` request
+```json
+{ "key": "exampleKey" }
+```
+
+### Server response
+```json
+{ "key": "exampleKey", "value": "exampleValue", "status": "ok" }
+```
+
+If the key doesn’t exist:
+```json
+{ "key": "exampleKey", "value": null, "status": "error" }
+```
+
+## How It Works
+
+- Starts up, reads log file, rebuilds memory like nothing happened.
+- Listens on TCP, spawns a thread for each client (like a decent host).
+- `SET` updates memory and logs to disk — in that order.
+- `GET` just reads from memory — no fuss.
+- All threads share one log file. There's a `ReentrantLock` making sure nobody talks over each other.
+
+## Run It
+
+1. Compile:
 ```bash
-java -cp target/your-jar-name.jar org.example.ServerMain
+javac -d out src/main/java/org/example/**/*.java
 ```
 
-### Client
-Start the client in a separate terminal:
+2. Start the server:
 ```bash
-java -cp target/your-jar-name.jar org.example.ClientMain
+java -cp out org.example.server.Server
 ```
 
-You can run multiple clients from different terminals.  
-Each client supports:
-- `1` → GET a key
-- `2` → PUT a key-value pair
-- `##` → Close connection
-
-## Message Format
-
-All communication between client and server is in JSON.
-
-### PUT Example
-```json
-{
-  "key": "foo",
-  "value": "bar"
-}
+3. Talk to it (Client):
+```bash
+java -cp out org.example.server.Client
 ```
 
-### GET Request
-```json
-{
-  "key": "foo"
-}
+Send it a message:
+```
+{"key":"username", "value":"alice"}
+{"key":"username"}
 ```
 
-### GET Response
-```json
-{
-  "key": "foo",
-  "value": "bar",
-  "status": "ok"
-}
-```
+It talks back. It's a good listener.
 
-If the key is not found:
-```json
-{
-  "key": "foo",
-  "value": null,
-  "status": "error"
-}
-```
+## Notes
 
-## Limitations (V1)
+- Log file is at `src/main/logs/logs.txt`
+- Logging is synchronized. Reads are not. Don’t worry — memory's fast.
+- No third-party libraries used beyond `org.json` (because writing JSON by hand is a trap).
 
-- Single-threaded: server can only handle one client at a time
-- All data is stored in-memory; no persistence
-- No TTLs or eviction
-- No distributed capability
+## Roadmap
 
-## Next Steps (V2 and beyond)
+- TTL for keys (aka built-in forgetfulness)
+- Snapshotting & log compaction
+- Thread pool instead of spawning a thread for everyone who knocks
+- Binary protocol
+- Distributed mode (eventually)
 
-- Add multi-threaded client handling
-- Support persistence to disk
-- Introduce command parsing logic
-- Explore compression and protocol optimizations
-- Eventually scale to a distributed architecture
-
----
-This was built to get hands-on with TCP sockets, threads, and Java I/O — not trying to reinvent Redis... yet.
