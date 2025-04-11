@@ -2,3 +2,4 @@
 {"value":"bad boy","key":"no"}
 {"value":"yes!!1","key":"am i cloning redis lol"}
 {"value":"no!!!2","key":"i cloning redis lol"}
+{"value":"tanshu","key":"vihan"}

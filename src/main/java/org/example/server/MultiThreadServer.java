@@ -7,6 +7,9 @@ import org.json.JSONObject;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.time.Duration;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class MultiThreadServer extends Thread {
@@ -15,7 +18,7 @@ public class MultiThreadServer extends Thread {
     private inMemoryStore store;
     private BufferedReader reader;
     private BufferedWriter writer;
-    private String STOP="##";
+    private final Duration timeout;
     FileLogger logger;
     ReentrantLock reenLock;
     int clientID;
@@ -27,6 +30,7 @@ public class MultiThreadServer extends Thread {
         this.clientID=id;
         this.logger=logger;
         this.reenLock=reenLock;
+        timeout=Duration.ofSeconds(30);
         System.out.println("ClientHandler-" + clientID);
     }
 
@@ -40,36 +44,69 @@ public class MultiThreadServer extends Thread {
             reader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
             writer = new BufferedWriter(new OutputStreamWriter(clientSocket.getOutputStream()));
             readMessages();
-        } catch (IOException e) {
+        } catch (IOException | ExecutionException | InterruptedException | TimeoutException e) {
             throw new RuntimeException(e);
         }
     }
 
-    private void readMessages() throws IOException {
+    private void readMessages() throws IOException, ExecutionException, InterruptedException, TimeoutException {
         String line;
-        while(true){
-            line =reader.readLine();
-            if(line==null){
-                closeThread();
-                return;
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            while (true) {
+                Future<String> future = executor.submit(() -> {
+                    try {
+                        return reader.readLine();
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+                try {
+                    line = future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+                } catch (TimeoutException e) {
+                    System.err.println("Timeout occurred: Task exceeded for Client " + clientID + ", " + timeout.toSeconds() + " seconds.");
+                    line = null;
+                    future.cancel(true);
+                } catch (InterruptedException | ExecutionException e) {
+                    line = null;
+                    System.err.println("Exception occurred: " + e.getMessage());
+                }
+
+
+                if (line == null) {
+                    closeThread();
+                    return;
+                }
+
+                JSONObject json = new JSONObject(line);
+                json.put("close", "notok");
+                if (json.has("value")) {
+                    String key = (String) json.get("key");
+                    String value = (String) json.get("value");
+                    updateKeyValue(key, value);
+                } else {
+                    String key = (String) json.get("key");
+                    getValue(key);
+                }
             }
-            JSONObject json = new JSONObject(line);
-            if (json.has("value")) {
-                String key = (String) json.get("key");
-                String value = (String) json.get("value");
-                updateKeyValue(key, value);
-            } else {
-                String key = (String) json.get("key");
-                getValue(key);
-            }
+        }
+        finally {
+            executor.shutdown();
         }
     }
 
     private void closeThread() {
         try {
+            JSONObject json = new JSONObject();
+            json.put("close","ok");
+            writer.write(json.toString());
+            writer.newLine();
+            writer.flush();
+
             if (reader != null) reader.close();
             if (writer != null) writer.close();
             if (clientSocket != null && !clientSocket.isClosed()) clientSocket.close();
+
         } catch (IOException e) {
             System.out.println("Error while closing resources for ClientHandler-" + clientID);
         }
