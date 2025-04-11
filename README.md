@@ -2,12 +2,13 @@
 
 # Java Key-Value Store – V2
 
-A lightweight in-memory key-value store in Java. It handles multiple clients, writes to disk so it doesn't forget things, and generally tries to keep its act together. Thread-safe. Mostly polite.
+A lightweight in-memory key-value store in Java. It handles multiple clients, writes to disk so it doesn’t forget things, and now even kicks out idle clients after 30 seconds of silence. Thread-safe. Mostly polite.
 
 ## Features
 
 - Basic `SET` and `GET` over TCP
-- One thread per client (we're friendly like that)
+- Thread pool for handling clients (no more freeloaders)
+- Clients get disconnected after 10s of inactivity (tough love)
 - JSON-based protocol — because YAML felt like overkill
 - Write-ahead logging to disk
 - Crash recovery on startup
@@ -18,7 +19,8 @@ A lightweight in-memory key-value store in Java. It handles multiple clients, wr
 src/
 ├── org.example.Store/       // In-memory storage logic
 ├── org.example.logger/      // File-based logger
-└── org.example.server/      // Server + per-client threading
+├── org.example.server/      // Server + client thread pool
+└── org.example.client/      // Command-line client
 ```
 
 ## Protocol
@@ -45,13 +47,19 @@ If the key doesn’t exist:
 { "key": "exampleKey", "value": null, "status": "error" }
 ```
 
+If you go quiet too long:
+```json
+{ "close": "ok" }
+```
+
 ## How It Works
 
-- Starts up, reads log file, rebuilds memory like nothing happened.
-- Listens on TCP, spawns a thread for each client (like a decent host).
+- Starts up, reads log file, and rebuilds in-memory state like nothing happened.
+- Listens on TCP, uses a thread pool to manage client connections.
+- Clients have 10 seconds of grace period between commands — stay chatty.
 - `SET` updates memory and logs to disk — in that order.
-- `GET` just reads from memory — no fuss.
-- All threads share one log file. There's a `ReentrantLock` making sure nobody talks over each other.
+- `GET` reads straight from memory.
+- All threads share one log file, safely locked behind a `ReentrantLock`.
 
 ## Run It
 
@@ -65,30 +73,29 @@ javac -d out src/main/java/org/example/**/*.java
 java -cp out org.example.server.Server
 ```
 
-3. Talk to it (Client):
+3. Run the client:
 ```bash
-java -cp out org.example.server.Client
+java -cp out org.example.ClientMain
 ```
 
-Send it a message:
+Send it something like:
 ```
 {"key":"username", "value":"alice"}
 {"key":"username"}
 ```
 
-It talks back. It's a good listener.
+It talks back. But if you ghost it, it’ll ghost you back.
 
 ## Notes
 
 - Log file is at `src/main/logs/logs.txt`
-- Logging is synchronized. Reads are not. Don’t worry — memory's fast.
-- No third-party libraries used beyond `org.json` (because writing JSON by hand is a trap).
+- Logging is synchronized. Reads are fast and unsynchronized.
+- No third-party libraries beyond `org.json` (writing JSON by hand is not a personality trait)
 
 ## Roadmap
 
-- TTL for keys (aka built-in forgetfulness)
-- Snapshotting & log compaction
-- Thread pool instead of spawning a thread for everyone who knocks
-- Binary protocol
+- TTL for keys (per key expiry)
+- log compaction
+- Binary protocol (because plain text is for poets)
 - Distributed mode (eventually)
 

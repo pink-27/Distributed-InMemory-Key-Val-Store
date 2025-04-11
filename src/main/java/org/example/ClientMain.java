@@ -19,10 +19,17 @@ public class ClientMain {
                     System.out.print("Enter Key:");
                     String key=scn.nextLine();
                     JSONObject json = client.sendCommand(key);
+                    if(json.get("close").equals("ok")){
+                        System.out.println("You've timed out due to activity bye bye!");
+                        client.close();
+                        return;
+                    }
+
                     if(json.get("status").equals("error")){
                         System.out.println("Missing key");
                         break;
                     }
+
                     System.out.println("Key: "+json.get("key")+", "+"\nValue: "+json.get("value"));
                     break;
                 }
