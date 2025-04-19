@@ -1,7 +1,6 @@
 package org.example;
 
-import org.example.client.Client;
-import org.example.server.Server;
+import org.example.server.proxy.Proxy;
 
 import java.io.IOException;
 
@@ -12,9 +11,11 @@ import java.io.IOException;
 public class ServerMain
 {
     public static void main( String[] args ) throws IOException {
-        Server server = new Server();
-        server.handleClient();
+        Proxy proxy = new Proxy();
+        proxy.handleClient();
     }
 
 
 }
+// mvn compile exec:java -Dexec.mainClass=org.example.ServerMain
+//

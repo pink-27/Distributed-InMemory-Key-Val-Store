@@ -1,41 +1,43 @@
-package org.example.server;
-
-import org.example.Store.inMemoryStore;
+package org.example.server.proxy;
 import org.example.logger.FileLogger;
+import org.example.message.ReplyMessage;
+import org.example.message.RequestMessage;
 import org.json.JSONObject;
-
 import java.io.*;
-import java.net.ServerSocket;
 import java.net.Socket;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 
-public class MultiThreadServer extends Thread {
-    private ServerSocket serverSocket;
-    private Socket clientSocket;
-    private inMemoryStore store;
+public class MultiThreadProxy extends Thread {
+    private final Socket clientSocket;
     private BufferedReader reader;
     private BufferedWriter writer;
     private final Duration timeout;
     FileLogger logger;
     ReentrantLock reenLock;
+    ArrayList<BlockingQueue<RequestMessage>>followerQueues;
+    BlockingQueue<RequestMessage>writerQueue;
+    BlockingQueue<ReplyMessage>replyQueue;
+
     int clientID;
 
-    public MultiThreadServer(ServerSocket serverSocket, Socket clientSocket, inMemoryStore inMemoryStore, FileLogger logger, ReentrantLock reenLock, int id){
-        this.serverSocket=serverSocket;
-        this.store=inMemoryStore;
+    public MultiThreadProxy(Socket clientSocket, FileLogger logger, ReentrantLock reenLock,ArrayList<BlockingQueue<RequestMessage>>followerQueues,BlockingQueue<RequestMessage> writerQueue, int id){
         this.clientSocket=clientSocket;
         this.clientID=id;
         this.logger=logger;
         this.reenLock=reenLock;
-        timeout=Duration.ofSeconds(30);
+        timeout=Duration.ofSeconds(1000);
+        this.followerQueues=followerQueues;
+        this.writerQueue=writerQueue;
+        this.replyQueue=new ArrayBlockingQueue<>(100);
         System.out.println("ClientHandler-" + clientID);
     }
 
     @Override
     public void run(){
+
         handleClient();
     }
 
@@ -79,14 +81,11 @@ public class MultiThreadServer extends Thread {
                 }
 
                 JSONObject json = new JSONObject(line);
-                json.put("close", "notok");
+                json.put("client",clientID);
                 if (json.has("value")) {
-                    String key = (String) json.get("key");
-                    String value = (String) json.get("value");
-                    updateKeyValue(key, value);
+                    updateKeyValue(json);
                 } else {
-                    String key = (String) json.get("key");
-                    getValue(key);
+                    getValue(json);
                 }
             }
         }
@@ -99,12 +98,14 @@ public class MultiThreadServer extends Thread {
         try {
             JSONObject json = new JSONObject();
             json.put("close","ok");
+            json.put("status","ok");
+
             writer.write(json.toString());
             writer.newLine();
             writer.flush();
 
             if (reader != null) reader.close();
-            if (writer != null) writer.close();
+            writer.close();
             if (clientSocket != null && !clientSocket.isClosed()) clientSocket.close();
 
         } catch (IOException e) {
@@ -113,26 +114,44 @@ public class MultiThreadServer extends Thread {
         System.out.println("ClientHandler-" + clientID + " closed");
     }
 
+    public void queryFollower(RequestMessage requestMessage, int follower) throws InterruptedException {
+        followerQueues.get(follower).put(requestMessage);
+    }
 
-    public void getValue(String Key) throws IOException {
-        String value = store.getValue(Key);
-        JSONObject response = new JSONObject();
-        response.put("key", Key);
-        response.put("value", value != null ? value : JSONObject.NULL);
-        if(value==null){
+    public void getValue(JSONObject msg) throws IOException, InterruptedException {
+        RequestMessage requestMessage= new RequestMessage(msg,replyQueue);
+        int randomNum = (int) (Math.random()*4);
+        queryFollower(requestMessage,randomNum);
+        ReplyMessage res = replyQueue.take();
+        JSONObject response = res.getJson();
+
+
+        if(!response.has("value")){
             response.put("status","error");
         }
         else{
             response.put("status","ok");
         }
+        response.put("close","notok");
         writer.write(response.toString());
         writer.newLine();
         writer.flush();
 
     }
-    public void updateKeyValue(String Key, String Value) throws IOException {
-        store.updateKeyVal(Key,Value);
-        logger.writeToLog(Key,Value);
+
+    public void sendToLeader(RequestMessage msg) throws InterruptedException {
+        writerQueue.put(msg);
+    }
+    public void updateKeyValue(JSONObject msg) throws IOException, InterruptedException {
+        RequestMessage requestMessage= new RequestMessage(msg);
+//        logger.writeToLog(Key,Value);
+        requestMessage.Writeop();
+        sendToLeader(requestMessage);
+        JSONObject response = new JSONObject();
+        response.put("close","notok");
+        writer.write(response.toString());
+        writer.newLine();
+        writer.flush();
     }
 
 }

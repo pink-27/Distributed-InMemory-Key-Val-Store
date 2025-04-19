@@ -1,6 +1,6 @@
 package org.example.client;
 
-import org.example.server.Server;
+import org.example.server.proxy.Proxy;
 import org.json.JSONObject;
 
 import java.io.*;
@@ -12,7 +12,7 @@ public class Client {
     private  BufferedReader reader;
 
     public Client() throws IOException {
-        clientSocket=new Socket("localhost" , Server.PORT);
+        clientSocket=new Socket("localhost" , Proxy.PORT);
         writer=new BufferedWriter(new OutputStreamWriter(clientSocket.getOutputStream()));
         reader =new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
     }
@@ -27,13 +27,14 @@ public class Client {
 
     }
 
-    public void sendCommand(String key, String value) throws IOException{
+    public JSONObject sendCommand(String key, String value) throws IOException{
         JSONObject json = new JSONObject();
         json.put("key",key);
         json.put("value",value);
         writer.write(json.toString());
         writer.newLine();
         writer.flush();
+        return readMessage();
     }
 
     private JSONObject readMessage() throws IOException {
