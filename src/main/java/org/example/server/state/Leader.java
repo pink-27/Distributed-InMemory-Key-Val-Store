@@ -28,7 +28,7 @@ public class Leader implements CurrState {
         return  writeQueue.take();
     }
 
-    public void sendUpdateds(String key, String value) throws InterruptedException {
+    public void sendUpdates(String key, String value) throws InterruptedException {
 
         for(int i=0;i<4;i++){
             JSONObject msg = new JSONObject();
@@ -41,7 +41,7 @@ public class Leader implements CurrState {
     }
     public void writeToDB(String key, String value) throws InterruptedException {
         store.updateKeyVal(key,value);
-        sendUpdateds(key,value);
+        sendUpdates(key,value);
     }
 
     @Override
