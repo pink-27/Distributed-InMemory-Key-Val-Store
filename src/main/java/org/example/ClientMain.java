@@ -19,18 +19,20 @@ public class ClientMain {
                     System.out.print("Enter Key:");
                     String key=scn.nextLine();
                     JSONObject json = client.sendCommand(key);
+
+
+                    if(json.has("status") && json.get("status").equals("error")){
+                        System.out.println("Missing key");
+                        break;
+                    }
+
                     if(json.get("close").equals("ok")){
                         System.out.println("You've timed out due to activity bye bye!");
                         client.close();
                         return;
                     }
 
-                    if(json.get("status").equals("error")){
-                        System.out.println("Missing key");
-                        break;
-                    }
-
-                    System.out.println("Key: "+json.get("key")+", "+"\nValue: "+json.get("value"));
+                    System.out.println("Key: "+json.get("key")+" "+"\nValue: "+json.get("value"));
                     break;
                 }
                 case "2":
@@ -39,7 +41,12 @@ public class ClientMain {
                     String key=scn.nextLine();
                     System.out.print("Enter Value:");
                     String value=scn.nextLine();
-                    client.sendCommand(key,value);
+                    JSONObject json =client.sendCommand(key,value);
+                    if(json.get("close").equals("ok")){
+                        System.out.println("You've timed out due to inactivity bye bye!");
+                        client.close();
+                        return;
+                    }
                     break;
                 }
                 case "##":
@@ -52,3 +59,5 @@ public class ClientMain {
         }
     }
 }
+//mvn compile exec:java -Dexec.mainClass=org.example.ClientMain
+//

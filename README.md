@@ -1,101 +1,111 @@
 
+---
 
-# Java Key-Value Store – V2
+# Java Key-Value Store – V2.5
 
-A lightweight in-memory key-value store in Java. It handles multiple clients, writes to disk so it doesn’t forget things, and now even kicks out idle clients after 30 seconds of silence. Thread-safe. Mostly polite.
+A distributed, multithreaded, in-memory key-value store in Java. Now featuring a proxy that delegates like middle management, a leader who handles the hard stuff, and followers who respond to reads and don’t ask too many questions. Still polite. Still threads. Slightly more distributed. Slightly more chaotic.
+
+## What’s New in 2.5
+
+- **Distributed(ish) architecture** – everything runs in threads, looks like a cluster, smells like a cluster
+- **Proxy** that routes `SET` to the leader and `GET` to random followers
+- **Leader + follower** node threads — they know their place
+- **Thread pool** to juggle client sessions (no freeloading threads anymore)
+- Clients get kicked after 10s of silence — because discipline
+- **Write-ahead logging was working in V2**… and then V2.5 happened. It's currently MIA.
+- **Crash recovery used to happen** — it might again one day
 
 ## Features
 
-- Basic `SET` and `GET` over TCP
-- Thread pool for handling clients (no more freeloaders)
-- Clients get disconnected after 10s of inactivity (tough love)
-- JSON-based protocol — because YAML felt like overkill
-- Write-ahead logging to disk
-- Crash recovery on startup
+- `SET` and `GET` over TCP
+- JSON-based protocol (easy to debug, hard to type)
+- Proxy routes requests to the right node (or tries)
+- Leader handles all writes, followers handle reads
+- Clients have an idle timeout — ghost us, get ghosted
+- Logging exists in the code, just not in spirit
 
 ## Project Structure
 
 ```
 src/
-├── org.example.Store/       // In-memory storage logic
-├── org.example.logger/      // File-based logger
-├── org.example.server/      // Server + client thread pool
-└── org.example.client/      // Command-line client
+├── org.example.Store/          // In-memory storage
+├── org.example.logger/         // Logging code that used to work
+├── org.example.message/        // JSON protocol messages
+├── org.example.server/
+│   ├── proxy/                  // Proxy server + thread pool
+│   ├── node/                   // Node logic for leader + followers
+│   └── state/                  // State interfaces + roles
+├── org.example.client/         // CLI client
+└── org.example/                // Entrypoints
 ```
 
 ## Protocol
 
-All messages are JSON, sent over a plain TCP connection.
+TCP + JSON. Nothing fancy. Easy to grok.
 
-### `SET` request
+### `SET`
 ```json
-{ "key": "exampleKey", "value": "exampleValue" }
+{ "key": "username", "value": "alice" }
 ```
 
-### `GET` request
+### `GET`
 ```json
-{ "key": "exampleKey" }
+{ "key": "username" }
 ```
 
-### Server response
+### Response
 ```json
-{ "key": "exampleKey", "value": "exampleValue", "status": "ok" }
+{ "key": "username", "value": "alice", "status": "ok" }
 ```
 
-If the key doesn’t exist:
+If the key is missing:
 ```json
-{ "key": "exampleKey", "value": null, "status": "error" }
+{ "key": "username", "value": null, "status": "error" }
 ```
 
-If you go quiet too long:
+If you sit idle for 10 seconds:
 ```json
 { "close": "ok" }
 ```
 
 ## How It Works
 
-- Starts up, reads log file, and rebuilds in-memory state like nothing happened.
-- Listens on TCP, uses a thread pool to manage client connections.
-- Clients have 10 seconds of grace period between commands — stay chatty.
-- `SET` updates memory and logs to disk — in that order.
-- `GET` reads straight from memory.
-- All threads share one log file, safely locked behind a `ReentrantLock`.
+- You start the proxy — it spawns the leader and followers
+- Clients connect and start sending JSON requests
+- Proxy routes:
+    - `SET` ➜ leader (who was supposed to log it… R.I.P. logging)
+    - `GET` ➜ random follower (who returns whatever’s in memory)
+- All nodes live in the same process for now — but they act like they’re distributed
+- Thread-safe where it counts, chill where it doesn’t
 
 ## Run It
 
-1. Compile:
+Start the proxy + nodes:
+
 ```bash
-javac -d out src/main/java/org/example/**/*.java
+mvn compile exec:java -Dexec.mainClass=org.example.ServerMain
 ```
 
-2. Start the server:
+Then spin up one or more clients:
+
 ```bash
-java -cp out org.example.server.Server
+mvn exec:java -Dexec.mainClass=org.example.ClientMain
 ```
 
-3. Run the client:
-```bash
-java -cp out org.example.ClientMain
+Try it out:
+```
+{"key":"name", "value":"vihan"}
+{"key":"name"}
 ```
 
-Send it something like:
-```
-{"key":"username", "value":"alice"}
-{"key":"username"}
-```
-
-It talks back. But if you ghost it, it’ll ghost you back.
+If nothing breaks, you’re doing great. If something breaks, you’re probably in the right directory.
 
 ## Notes
 
-- Log file is at `src/main/logs/logs.txt`
-- Logging is synchronized. Reads are fast and unsynchronized.
-- No third-party libraries beyond `org.json` (writing JSON by hand is not a personality trait)
+- Logs are at `src/main/logs/logs.txt`… or they would be, if logging wasn’t currently broken
+- `org.json` is finally handled properly via Maven (about time)
+- No frameworks. No Spring. No nonsense. Just Java and vibes
 
-## Roadmap
+---
 
-- TTL for keys (per key expiry)
-- log compaction
-- Binary protocol (because plain text is for poets)
-- Distributed mode (eventually)
-
+Basically, V2.5 is like V2’s ambitious cousin who moved out, got a job, and forgot how to do laundry. It’s distributed now, but logging? We’ll get back to that.
