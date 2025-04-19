@@ -1,6 +1,3 @@
-
----
-
 # Java Key-Value Store – V2.5
 
 A distributed, multithreaded, in-memory key-value store in Java. Now featuring a proxy that delegates like middle management, a leader who handles the hard stuff, and followers who respond to reads and don’t ask too many questions. Still polite. Still threads. Slightly more distributed. Slightly more chaotic.
@@ -70,13 +67,14 @@ If you sit idle for 10 seconds:
 
 ## How It Works
 
-- You start the proxy — it spawns the leader and followers
-- Clients connect and start sending JSON requests
+- You start the proxy — it spawns the leader and followers.
+- Clients connect and start sending JSON requests.
 - Proxy routes:
-    - `SET` ➜ leader (who was supposed to log it… R.I.P. logging)
-    - `GET` ➜ random follower (who returns whatever’s in memory)
-- All nodes live in the same process for now — but they act like they’re distributed
-- Thread-safe where it counts, chill where it doesn’t
+  - `SET` ➜ leader (who was supposed to log it… R.I.P. logging)
+  - `GET` ➜ random follower (who returns whatever’s in memory)
+- The **leader propagates writes to the followers** by pushing them onto a **blocking queue**. Once the leader successfully handles a `SET` request and updates its memory, it asynchronously propagates the write to the followers via this queue, ensuring the data is replicated across nodes.
+- All nodes live in the same process for now — but they act like they’re distributed.
+- Thread-safe where it counts, chill where it doesn’t.
 
 ## Run It
 
@@ -106,6 +104,3 @@ If nothing breaks, you’re doing great. If something breaks, you’re probably 
 - `org.json` is finally handled properly via Maven (about time)
 - No frameworks. No Spring. No nonsense. Just Java and vibes
 
----
-
-Basically, V2.5 is like V2’s ambitious cousin who moved out, got a job, and forgot how to do laundry. It’s distributed now, but logging? We’ll get back to that.
