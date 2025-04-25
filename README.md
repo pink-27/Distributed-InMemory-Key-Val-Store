@@ -5,7 +5,7 @@
 
 It’s still a key-value store. Still Java. Still pretending to be distributed. But now it has **Raft**, so everything feels a bit more academic.
 
-The leader has commitment issues (commitIndex), followers just do what they’re told (unless their logs say otherwise), and consensus is more of a *vibe* than a guarantee. But hey — logs replicate, things eventually commit, and we all pretend this isn't just threads in trench coats.
+The leader has commitment issues (commitIndex), followers just do what they’re told (unless their logs say otherwise), and consensus is more of a "eventuality" than a guarantee. But logs replicate, things eventually commit, and we all pretend this isn't just threads in hoodies.
 
 ## What’s New in V3
 
@@ -114,14 +114,12 @@ Results may vary. And that’s part of the fun.
 
 - Logs technically exist. Snapshots don't.
 - If the leader crashes, leadership dies with it (no re-elections yet).
-- Followers will delete logs on command, even if those were committed — whoops?
-- Everything is in one process. But it dreams of scale.
+- Everything is in one process (multithreaded). But it dreams of scale.
 
 ## Coming Soon (Maybe)
 
 - Real networking
 - Crash recovery that recovers something
-- Persistence, because memory is fleeting
 - Proper elections, not just a designated leader at launch
 
 ## License
