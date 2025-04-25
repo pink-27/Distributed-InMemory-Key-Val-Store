@@ -22,9 +22,9 @@ The leader has commitment issues (commitIndex), followers just do what they’re
 - Writes go to the leader, reads go to whichever follower answers first
 - Two-Phase Commit: Leaders don’t just write and hope. They negotiate. Followers ACK or NACK, and only then does the commit go through. Democracy, but with logs.
 - Followers delete their dreams (aka conflicting entries) to stay in line
-- Everything's in-memory —> fast, fragile, and gone on restart
+- Everything's in-memory —> fast & fragile
 - Upon restart, a node reconstructs its term, vote, and log history before resuming its role. Amnesia isn’t tolerated.
-- Client timeout after 10s, because we respect our time
+- Client timeout after 1000s of inactivity, because we respect our time
 - Followers start a stopwatch every time they hear from the leader. If it runs out, they panic and hold elections.
 - JSON-based protocol: easy to break, annoying to write
 
