@@ -2,35 +2,51 @@ package org.example.message;
 
 import org.json.JSONObject;
 
-import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.*;
 
 public class RequestMessage {
 
     private JSONObject json;
-    private BlockingQueue<ReplyMessage> clientReplyQueue;
-    private int write=0;
-    public RequestMessage(JSONObject json,BlockingQueue<ReplyMessage>clientReplyQueue){
+    private BlockingDeque<ReplyMessage> clientReplyQueue;
+    private final MessageType msgType;
+    private AppendEntries entries;
+    public RequestMessage(JSONObject json,BlockingDeque<ReplyMessage>clientReplyQueue, MessageType msgType){
         this.json=json;
         this.clientReplyQueue=clientReplyQueue;
+        this.msgType=msgType;
     }
 
-    public RequestMessage(JSONObject json){
+
+    public RequestMessage(JSONObject json, MessageType msgType){
         this.json=json;
+        this.msgType=msgType;
     }
 
-    public BlockingQueue<ReplyMessage> getClientReplyQueue() {
+    public RequestMessage(MessageType msgType){
+        this.msgType=msgType;
+    }
+
+    public RequestMessage(MessageType msgType,AppendEntries entries){
+        this.msgType=msgType;
+        this.entries=entries;
+    }
+
+
+
+    public BlockingDeque<ReplyMessage> getClientReplyQueue() {
         return clientReplyQueue;
     }
 
-    public void Writeop(){
-        this.write=1;
-    }
-
-    public int isWrite(){
-        return this.write;
-    }
 
     public JSONObject getJson() {
         return json;
+    }
+
+    public MessageType getMsgType(){
+        return msgType;
+    }
+
+    public AppendEntries getAppendEntries() {
+        return entries;
     }
 }

@@ -1,20 +1,20 @@
 package org.example.server.proxy;
 
-import netscape.javascript.JSObject;
-import org.example.Store.inMemoryStore;
+import org.example.raft.ClusterRegistry;
+import org.example.server.state.NodeRole;
+import org.example.store.inMemoryStore;
 import org.example.logger.FileLogger;
 import org.example.message.RequestMessage;
 import org.example.server.node.Node;
 import org.example.server.state.Follower;
 import org.example.server.state.Leader;
-import org.json.JSONObject;
 
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.*;
+
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.locks.ReentrantLock;
@@ -25,40 +25,32 @@ public class Proxy {
     private Socket clientSocket;
     private inMemoryStore store;
     public static int PORT = 3001;
-    FileLogger logger;
     ReentrantLock reenLock;
     ExecutorService nodePool;
     Node leader;
-    ArrayList<Node> followers;
-    ArrayList<BlockingQueue<RequestMessage>>followersQueue;
-    BlockingQueue<RequestMessage> writersQueue =new ArrayBlockingQueue<>(100);
-
-
+    ArrayList<Node>nodes;
+    ClusterRegistry registry = ClusterRegistry.getInstance();
 
     public Proxy() {
         try {
             serverSocket = new ServerSocket(PORT);
             store = new inMemoryStore();
             reenLock = new ReentrantLock();
-            logger = new FileLogger("logs",store,reenLock);
-            logger.recoverFromLog();
             this.nodePool= Executors.newFixedThreadPool(5);
+            this.nodes = new ArrayList<>();
 
-            Leader leader1 = new Leader();
-            leader1.setQueue(writersQueue);
-            leader = new Node(leader1);
-            this.followersQueue=new ArrayList<>();
-            this.followers = new ArrayList<>();
             for(int i=0;i<4;i++){
-                Follower follower = new Follower();
-                BlockingQueue<RequestMessage> readQueue=new ArrayBlockingQueue<>(100);
-                follower.setQueue(readQueue);
-                followers.add(new Node(follower));
-                this.followersQueue.add(readQueue);
-                Thread f = new Thread(followers.get(i));
+                registry.updateRole(i, NodeRole.follower);
+
+                Follower follower = new Follower(i);
+                nodes.add(new Node(follower,i));
+                Thread f = new Thread(nodes.get(i));
                 f.start();
             }
-            leader1.setFollowers(followersQueue);
+            registry.updateLeader(4);
+            Leader leader1 = new Leader(4);
+            leader = new Node(leader1,4);
+            nodes.add(leader);
             Thread l = new Thread(leader);
             l.start();
 
@@ -72,7 +64,7 @@ public class Proxy {
             int clientID=0;
             while (true) {
                 clientSocket = serverSocket.accept();
-                MultiThreadProxy threadProxy = new MultiThreadProxy(clientSocket, logger,reenLock,followersQueue,writersQueue, ++clientID);
+                MultiThreadProxy threadProxy = new MultiThreadProxy(clientSocket,reenLock,nodes, ++clientID);
                 threadProxy.start();
             }
         } catch (IOException e) {

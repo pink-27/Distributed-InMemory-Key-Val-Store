@@ -1,0 +1,7 @@
+{"op":"PUT","index":0,"term":0,"value":"1","key":"1"}
+{"op":"PUT","index":1,"term":0,"value":"2","key":"2"}
+{"op":"PUT","index":2,"term":0,"value":"3","key":"3"}
+{"op":"PUT","index":3,"term":0,"value":"3","key":"3"}
+{"op":"PUT","index":4,"term":0,"value":"4","key":"4"}
+{"op":"PUT","index":5,"term":0,"value":"5","key":"5"}
+{"op":"PUT","index":6,"term":0,"value":"7","key":"7"}

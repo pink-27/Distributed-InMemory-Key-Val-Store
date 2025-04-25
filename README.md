@@ -1,106 +1,129 @@
-# Java Key-Value Store – V2.5
 
-A distributed, multithreaded, in-memory key-value store in Java. Now featuring a proxy that delegates like middle management, a leader who handles the hard stuff, and followers who respond to reads and don’t ask too many questions. Still polite. Still threads. Slightly more distributed. Slightly more chaotic.
 
-## What’s New in 2.5
 
-- **Distributed(ish) architecture** – everything runs in threads, looks like a cluster, smells like a cluster
-- **Proxy** that routes `SET` to the leader and `GET` to random followers
-- **Leader + follower** node threads — they know their place
-- **Thread pool** to juggle client sessions (no freeloading threads anymore)
-- Clients get kicked after 10s of silence — because discipline
-- **Write-ahead logging was working in V2**… and then V2.5 happened. It's currently MIA.
-- **Crash recovery used to happen** — it might again one day
+# Java Key-Value Store – V3
+
+It’s still a key-value store. Still Java. Still pretending to be distributed. But now it has **Raft**, so everything feels a bit more academic.
+
+The leader has commitment issues (commitIndex), followers just do what they’re told (unless their logs say otherwise), and consensus is more of a *vibe* than a guarantee. But hey — logs replicate, things eventually commit, and we all pretend this isn't just threads in trench coats.
+
+## What’s New in V3
+
+- **Raft-lite™** — elections, log replication, the works. Mostly.
+- **AppendEntries** — the leader’s way of maintaining it's oppressive reign over its followers
+- **Conflict resolution** — overwrite first, ask questions never
+- **CommitIndex broadcast** — the leader decides what’s official now
+- **Ack queues** — because everyone wants validation
+- **PrevLogIndex check** — trust but verify. Then maybe delete half your log.
 
 ## Features
+ 
+- `SET` and `GET` over TCP, through a proxy that pretends to understand consistency
+- Writes go to the leader, reads go to whichever follower answers first
+- Two-Phase Commit: Leaders don’t just write and hope. They negotiate. Followers ACK or NACK, and only then does the commit go through. Democracy, but with logs.
+- Followers delete their dreams (aka conflicting entries) to stay in line
+- Everything's in-memory — fast, fragile, and gone on restart
+- Upon restart, a node reconstructs its term, vote, and log history before resuming its role. Amnesia isn’t tolerated.
+- Client timeout after 10s — because we respect our time
+- Followers start a stopwatch every time they hear from the leader. If it runs out, they panic and hold elections.
+- JSON-based protocol: easy to break, annoying to write
 
-- `SET` and `GET` over TCP
-- JSON-based protocol (easy to debug, hard to type)
-- Proxy routes requests to the right node (or tries)
-- Leader handles all writes, followers handle reads
-- Clients have an idle timeout — ghost us, get ghosted
-- Logging exists in the code, just not in spirit
-
-## Project Structure
+## Architecture
 
 ```
 src/
-├── org.example.Store/          // In-memory storage
-├── org.example.logger/         // Logging code that used to work
-├── org.example.message/        // JSON protocol messages
+├── org.example.raft/           // Raft logic: logs, elections, disappointment
+├── org.example.store/          // Memory storage — nothing lasts forever
 ├── org.example.server/
-│   ├── proxy/                  // Proxy server + thread pool
-│   ├── node/                   // Node logic for leader + followers
-│   └── state/                  // State interfaces + roles
-├── org.example.client/         // CLI client
-└── org.example/                // Entrypoints
+│   ├── proxy/                  // Threaded router that plays god
+│   ├── node/                   // Leader/follower logic
+│   └── nodeRole/               // They pretend to have roles
+├── org.example.message/        // JSON protocol stuff
+├── org.example.client/         // Where humans type into sockets
+└── org.example/                // Main class, entrypoints, etc
 ```
 
 ## Protocol
 
-TCP + JSON. Nothing fancy. Easy to grok.
+TCP + JSON.
 
 ### `SET`
 ```json
-{ "key": "username", "value": "alice" }
+{ "key": "snack", "value": "chips" }
 ```
 
 ### `GET`
 ```json
-{ "key": "username" }
+{ "key": "snack" }
 ```
 
-### Response
+### If all goes well
 ```json
-{ "key": "username", "value": "alice", "status": "ok" }
+{ "key": "snack", "value": "chips", "status": "ok" }
 ```
 
-If the key is missing:
+If you ask for something that doesn’t exist:
 ```json
-{ "key": "username", "value": null, "status": "error" }
+{ "key": "snack", "value": null, "status": "error" }
 ```
 
-If you sit idle for 10 seconds:
+If you ignore us for 10 seconds:
 ```json
 { "close": "ok" }
 ```
 
-## How It Works
+## How It Works (Allegedly)
 
-- You start the proxy — it spawns the leader and followers.
-- Clients connect and start sending JSON requests.
+- You start the proxy. It spawns the leader and some followers. Like a cult, but legal.
+- Clients connect and throw JSON at the proxy.
 - Proxy routes:
-  - `SET` ➜ leader (who was supposed to log it… R.I.P. logging)
-  - `GET` ➜ random follower (who returns whatever’s in memory)
-- The **leader propagates writes to the followers** by pushing them onto a **blocking queue**. Once the leader successfully handles a `SET` request and updates its memory, it asynchronously propagates the write to the followers via this queue, ensuring the data is replicated across nodes.
-- All nodes live in the same process for now — but they act like they’re distributed.
-- Thread-safe where it counts, chill where it doesn’t.
+  - `SET` ➜ the leader
+  - `GET` ➜ a follower (chosen with the rigor of a coin toss)
+- Leader logs the write, replicates it to followers using `AppendEntries`
+- Followers check if it fits with their current life choices (aka log consistency)
+- If not? They purge the bad memories (delete conflicting entries)
+- If yes? They send an ACK and pretend everything’s fine
+- Once the leader gets enough approvals, it marks the entry as “committed” and tells everyone to act accordingly
 
-## Run It
+## Running It
 
-Start the proxy + nodes:
+Start the system:
 
 ```bash
 mvn compile exec:java -Dexec.mainClass=org.example.ServerMain
 ```
 
-Then spin up one or more clients:
+Spin up a client (or three):
 
 ```bash
 mvn exec:java -Dexec.mainClass=org.example.ClientMain
 ```
 
-Try it out:
+Try typing:
 ```
-{"key":"name", "value":"vihan"}
-{"key":"name"}
+{"key":"cat", "value":"meow"}
+{"key":"cat"}
 ```
 
-If nothing breaks, you’re doing great. If something breaks, you’re probably in the right directory.
+Results may vary. And that’s part of the fun.
 
-## Notes
+## Known Issues
 
-- Logs are at `src/main/logs/logs.txt`… or they would be, if logging wasn’t currently broken
-- `org.json` is finally handled properly via Maven (about time)
-- No frameworks. No Spring. No nonsense. Just Java and vibes
+- Logs technically exist. Snapshots don't.
+- If the leader crashes, leadership dies with it (no re-elections yet).
+- Followers will delete logs on command, even if those were committed — whoops?
+- Everything is in one process. But it dreams of scale.
 
+## Coming Soon (Maybe)
+
+- Real networking
+- Crash recovery that recovers something
+- Persistence, because memory is fleeting
+- Proper elections, not just a designated leader at launch
+
+## License
+
+MIT — fork it, run it, break it, build something cooler with it.
+```
+
+Let me know if you want a changelog that roasts the project’s past versions.

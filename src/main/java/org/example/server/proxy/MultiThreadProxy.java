@@ -1,7 +1,11 @@
 package org.example.server.proxy;
 import org.example.logger.FileLogger;
+import org.example.message.MessageType;
 import org.example.message.ReplyMessage;
 import org.example.message.RequestMessage;
+import org.example.server.node.Node;
+import org.example.raft.ClusterRegistry;
+import org.example.server.state.NodeRole;
 import org.json.JSONObject;
 import java.io.*;
 import java.net.Socket;
@@ -15,23 +19,22 @@ public class MultiThreadProxy extends Thread {
     private BufferedReader reader;
     private BufferedWriter writer;
     private final Duration timeout;
-    FileLogger logger;
     ReentrantLock reenLock;
-    ArrayList<BlockingQueue<RequestMessage>>followerQueues;
-    BlockingQueue<RequestMessage>writerQueue;
-    BlockingQueue<ReplyMessage>replyQueue;
-
+    ArrayList<BlockingDeque<RequestMessage>>followerQueues;
+    BlockingDeque<RequestMessage>writerQueue;
+    BlockingDeque<ReplyMessage>replyQueue;
+    ClusterRegistry registry = ClusterRegistry.getInstance();
+    ArrayList<Node>nodes;
+    ArrayList<Integer>followerId;
     int clientID;
 
-    public MultiThreadProxy(Socket clientSocket, FileLogger logger, ReentrantLock reenLock,ArrayList<BlockingQueue<RequestMessage>>followerQueues,BlockingQueue<RequestMessage> writerQueue, int id){
+    public MultiThreadProxy(Socket clientSocket, ReentrantLock reenLock,ArrayList<Node>nodes,int id){
         this.clientSocket=clientSocket;
         this.clientID=id;
-        this.logger=logger;
         this.reenLock=reenLock;
         timeout=Duration.ofSeconds(1000);
-        this.followerQueues=followerQueues;
-        this.writerQueue=writerQueue;
-        this.replyQueue=new ArrayBlockingQueue<>(100);
+        this.nodes=nodes;
+        this.replyQueue=new LinkedBlockingDeque<>(100);
         System.out.println("ClientHandler-" + clientID);
     }
 
@@ -115,16 +118,19 @@ public class MultiThreadProxy extends Thread {
     }
 
     public void queryFollower(RequestMessage requestMessage, int follower) throws InterruptedException {
+        this.followerId = registry.getFollowerId();
+        this.followerQueues=registry.getAllFollowerQueues();
         followerQueues.get(follower).put(requestMessage);
     }
 
+
     public void getValue(JSONObject msg) throws IOException, InterruptedException {
-        RequestMessage requestMessage= new RequestMessage(msg,replyQueue);
-        int randomNum = (int) (Math.random()*4);
+        RequestMessage requestMessage= new RequestMessage(msg,replyQueue, MessageType.getMessage);
+        this.followerId = registry.getFollowerId();
+        int randomNum = (int) (Math.random()*(followerId.size()));
         queryFollower(requestMessage,randomNum);
         ReplyMessage res = replyQueue.take();
         JSONObject response = res.getJson();
-
 
         if(!response.has("value")){
             response.put("status","error");
@@ -140,12 +146,11 @@ public class MultiThreadProxy extends Thread {
     }
 
     public void sendToLeader(RequestMessage msg) throws InterruptedException {
+        this.writerQueue=registry.getLeaderQueue();
         writerQueue.put(msg);
     }
     public void updateKeyValue(JSONObject msg) throws IOException, InterruptedException {
-        RequestMessage requestMessage= new RequestMessage(msg);
-//        logger.writeToLog(Key,Value);
-        requestMessage.Writeop();
+        RequestMessage requestMessage= new RequestMessage(msg,MessageType.putMessage);
         sendToLeader(requestMessage);
         JSONObject response = new JSONObject();
         response.put("close","notok");

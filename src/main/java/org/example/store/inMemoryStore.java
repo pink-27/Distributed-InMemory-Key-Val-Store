@@ -1,4 +1,4 @@
-package org.example.Store;
+package org.example.store;
 
 import java.util.concurrent.ConcurrentHashMap;
 

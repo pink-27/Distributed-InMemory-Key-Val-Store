@@ -12,4 +12,9 @@ public class ReplyMessage {
     public JSONObject getJson() {
         return json;
     }
+
+    private MessageType msgType= MessageType.replyMessage;
+    public MessageType getMsgType(){
+        return msgType;
+    }
 }

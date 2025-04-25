@@ -1,73 +1,104 @@
 package org.example.logger;
 
-import org.example.Store.inMemoryStore;
+import org.example.store.inMemoryStore;
 import org.json.JSONObject;
 
 import java.io.*;
+import java.util.ArrayList;
 import java.util.Scanner;
-import java.util.concurrent.locks.ReentrantLock;
 
-public class FileLogger implements PersistentLogger{
+public class FileLogger {
 
-    String path="src/main/logs";
+    String path = "src/main/logs";
     File file;
+    File metaFile;
     Scanner dataReader;
     inMemoryStore store;
     BufferedWriter writer;
-    ReentrantLock reenLock;
+    int nodeId;
 
-    public FileLogger(String name, inMemoryStore store, ReentrantLock reenLock) throws IOException {
-        path=path+"/"+name+".txt";
-        this.store=store;
-        file = new File(path);
-        this.reenLock=reenLock;
+    public FileLogger(int name, inMemoryStore store) throws IOException {
+        this.nodeId = name;
+        this.path = path + "/" + "log" + name + ".txt";
+        this.metaFile = new File("src/main/logs/meta" + name + ".txt");
+        this.store = store;
+        this.file = new File(path);
         openLogFile();
         dataReader = new Scanner(file);
-        writer = new BufferedWriter(new FileWriter(file,true));
+        writer = new BufferedWriter(new FileWriter(file, true));
     }
 
-    @Override
     public void openLogFile() throws IOException {
-        if(file.createNewFile()){
-            System.out.println(path+" Created!");
+        if (file.createNewFile()) {
+            System.out.println(path + " Created!");
+        } else {
+            System.out.println(path + " Already Exists!");
         }
-        else{
-            System.out.println(path+" Already Exists!");
-        }
-    }
 
-    @Override
-    public void writeToLog(String key, String value) throws IOException {
-        reenLock.lock();
-        try {
-            JSONObject json = new JSONObject();
-            json.put("key", key);
-            json.put("value", value);
-            String content = json.toString();
-            writer.write(content);
-            writer.newLine();
-            writer.flush();
-        } finally {
-            reenLock.unlock();
+        if (metaFile.createNewFile()) {
+            System.out.println(metaFile.getPath() + " Metadata Created!");
+        } else {
+            System.out.println(metaFile.getPath() + " Metadata Already Exists!");
         }
     }
 
+    public void writeToLog(LogEntry log) throws IOException {
+        JSONObject json = log.getOperation();
+        String content = json.toString();
+        writer.write(content);
+        writer.newLine();
+        writer.flush();
+    }
 
-    @Override
-    public void recoverFromLog() throws IOException {
-        while(dataReader.hasNextLine()){
+    public void recoverFromLog(ArrayList<LogEntry> log) throws IOException {
+        while (dataReader.hasNextLine()) {
             String fileData = dataReader.nextLine();
             JSONObject json = new JSONObject(fileData);
-            String key = (String) json.get("key");
-            String value= (String) json.get("value");
-            store.updateKeyVal(key,value);
+            String key = json.getString("key");
+            String value = json.getString("value");
+            store.updateKeyVal(key, value);
+            int index = json.getInt("index");
+            int term = json.getInt("term");
+            LogEntry entry = new LogEntry(index, term, key, value);
+            log.add(entry);
         }
     }
 
-    @Override
+    public void persistMetadata(int currentTerm, int votedFor) throws IOException {
+        JSONObject meta = new JSONObject();
+        meta.put("currentTerm", currentTerm);
+        meta.put("votedFor", votedFor);
+
+        try (BufferedWriter metaWriter = new BufferedWriter(new FileWriter(metaFile, false))) {
+            metaWriter.write(meta.toString());
+            metaWriter.flush();
+        }
+    }
+
+    public int getCurrentTerm() {
+        try (BufferedReader reader = new BufferedReader(new FileReader(metaFile))) {
+            String line = reader.readLine();
+            if (line != null) {
+                JSONObject json = new JSONObject(line);
+                return json.getInt("currentTerm");
+            }
+        } catch (Exception ignored) {}
+        return 0; // default
+    }
+
+    public int getVotedFor() {
+        try (BufferedReader reader = new BufferedReader(new FileReader(metaFile))) {
+            String line = reader.readLine();
+            if (line != null) {
+                JSONObject json = new JSONObject(line);
+                return json.getInt("votedFor");
+            }
+        } catch (Exception ignored) {}
+        return -1; // default
+    }
+
     public void closeLogFile() throws IOException {
         if (writer != null) writer.close();
         if (dataReader != null) dataReader.close();
     }
-
 }
