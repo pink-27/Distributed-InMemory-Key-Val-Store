@@ -131,17 +131,11 @@ public class Leader implements CurrState {
         int success = 1;  // leader self vote
         int failure = 0;
         long deadline = System.currentTimeMillis() + 5000;
-
-//        System.out.println("[Leader-" + nodeId + "] Waiting for quorum, required=" + required);
-//        System.out.println("[Leader-" + nodeId + "] Quorum deadline set to " + deadline + " (5000ms timeout)");
-//        success + failure < required &&
         while (System.currentTimeMillis() < deadline && success + failure <= followers.size()) {
             try {
-//                System.out.println("[Leader-" + nodeId + "] Polling for ACKs, current status: success=" +
-//                        success + ", failure=" + failure);
+
                 Ack ack = ackQueue.poll(deadline - System.currentTimeMillis(), TimeUnit.MILLISECONDS);
                 if (ack == null) {
-//                    System.out.println("[Leader-" + nodeId + "] Oops time out!!!!");
                     break;
                 }
 
@@ -151,28 +145,18 @@ public class Leader implements CurrState {
                     nextIndex.put(ack.getNodeId(), idx + 1);
                     matchIndex.put(ack.getNodeId(), idx);
 
-//                    System.out.println("[Leader-" + nodeId + "] Received success ACK from node " + ack.getNodeId() +
-//                            ", matchIndex=" + idx + ", updated nextIndex " + oldNextIndex + "->" + (idx + 1) +
-//                            ", success count=" + success);
                 } else {
                     failure++;
                     if(ack.getCurrentTerm()>currentTerm){
-//                        System.out.println("[Leader-" + nodeId + "] Received ACK with higher term: current=" +
-//                                currentTerm + ", received=" + ack.getCurrentTerm() + ", stepping down");
+
                         currentTerm=ack.getCurrentTerm();
                         isLeader=0;
                         return false;
                     }
                     nextIndex.compute(ack.getNodeId(), (k, oldNextIndex) -> Math.max(0, oldNextIndex - 1));
-
-//                    System.out.println("[Leader-" + nodeId + "] Received failure ACK from node " + ack.getNodeId() +
-//                            ", decremented nextIndex " + oldNextIndex + "->" + nextIndex.get(ack.getNodeId()) +
-//                            ", failure count=" + failure);
                     try {
-//                        System.out.println("[Leader-" + nodeId + "] Retrying AppendEntries to follower " + ack.getNodeId());
                         sendAppendEntriesToFollower(ack.getNodeId());
                     } catch (InterruptedException e) {
-//                        System.out.println("[Leader-" + nodeId + "] Interrupted while retrying AppendEntries: " + e.getMessage());
                         e.printStackTrace();
                     }
                 }
@@ -184,37 +168,25 @@ public class Leader implements CurrState {
         }
 
         boolean hasQuorum = success >= required;
-//        System.out.println("[Leader-" + nodeId + "] Quorum check: success=" + success +
-//                ", failures=" + failure + ", required=" + required +
-//                ", result=" + (hasQuorum ? "SUCCESS" : "FAILURE"));
 
         return hasQuorum;
     }
     public void sendHeartBeat() throws InterruptedException {
-//        System.out.println("[Leader-" + nodeId + "] Starting heartbeat cycle");
         this.followers=registry.getAllFollowerBeatsQueues();
         ArrayList<Integer>followerID = registry.getFollowerId();
-//        System.out.println("[Leader-" + nodeId + "] Sending heartbeats to " + followerID.size() + " followers");
 
         for (int i = 0; i < followerID.size(); i++) {
             int prevIndex = nextIndex.get(followerID.get(i)) - 1;
             RequestMessage msg = getRequestMessage(prevIndex);
-//            System.out.println("[Leader-" + nodeId + "] Sending heartbeat to follower " + followerID.get(i));
             registry.getFollowerBeatsQueue(followerID.get(i)).offer(msg);
         }
-//        System.out.println("[Leader-" + nodeId + "] Checking for quorum after heartbeats");
         hasQuorum();
-
-        // Reschedule next heartbeat
-//        System.out.println("[Leader-" + nodeId + "] Scheduling next heartbeat in " + beatTime + "ms");
 
     }
 
     private RequestMessage getRequestMessage(int prevIndex) {
         int prevTerm = (prevIndex >= 0 ? log.get(prevIndex).getTerm() : 0);
         ArrayList<LogEntry> entries = new ArrayList<>();
-//            System.out.println("[Leader-" + nodeId + "] Creating heartbeat for follower " + followerID.get(i) +
-//                    ", prevIndex=" + prevIndex + ", prevTerm=" + prevTerm);
 
         AppendEntries rpc = new AppendEntries(currentTerm,nodeId, prevIndex,prevTerm,entries,leaderCommitIndex,MessageType.appendEntries,ackQueue);
         RequestMessage msg = new RequestMessage(MessageType.appendEntries, rpc);

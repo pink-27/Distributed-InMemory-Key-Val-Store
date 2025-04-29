@@ -14,3 +14,5 @@
 {"op":"PUT","index":13,"term":0,"value":"nope","key":"no idea"}
 {"op":"PUT","index":14,"term":0,"value":"vihan","key":"vihan"}
 {"op":"PUT","index":15,"term":0,"value":"11","key":"abcd"}
+{"op":"PUT","index":16,"term":0,"value":"aa","key":"abcd"}
+{"op":"PUT","index":17,"term":0,"value":"123","key":"123"}

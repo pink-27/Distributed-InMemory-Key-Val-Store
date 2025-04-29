@@ -95,14 +95,9 @@ public class Follower implements CurrState {
     public void handleAppendEntries(AppendEntries ae) throws InterruptedException {
         BlockingDeque<Ack> ackQ = ae.getAckQueue();
 
-//                System.out.println("[Follower-" + nodeId + "] Received AppendEntries from leader " + registry.getLeaderId() +
-//                        ", term=" + ae.getCurrentTerm() + ", prevLogIndex=" + ae.getPrevLogIndex() +
-//                        ", entries=" + ae.getEntries().size());
-
         // 1) reject stale term
         if (ae.getCurrentTerm() < currentTerm) {
-//                    System.out.println("[Follower-" + nodeId + "] Rejecting stale term " + ae.getCurrentTerm() +
-//                            " (current=" + currentTerm + ")");
+
             ackQ.put(new Ack(nodeId, 0, -1, currentTerm));
             return;
         }
@@ -113,8 +108,6 @@ public class Follower implements CurrState {
         int prevTerm = ae.getPrevLogTerm();
         if (prevIdx >= log.size() ||
                 (prevIdx >= 0 && log.get(prevIdx).getTerm() != prevTerm)) {
-//                    System.out.println("[Follower-" + nodeId + "] Log inconsistency at index " + prevIdx +
-//                            ", my log size=" + log.size());
             ackQ.put(new Ack(nodeId, 0, -1, currentTerm));
             return;
         }
@@ -125,30 +118,19 @@ public class Follower implements CurrState {
         while (log.size() > turncateIndex) {
             log.remove(log.size() - 1);
         }
-        if (!ae.getEntries().isEmpty()) {
-//                    System.out.println("[Follower-" + nodeId + "] Appending " + ae.getEntries().size() + " entries");
-        }
 
         for (LogEntry entry : ae.getEntries()) {
             int idx = entry.getIndex();
             log.add(entry);
             match = idx;
-//                    System.out.println("[Follower-" + nodeId + "] Added entry at index " + idx +
-//                            ", term=" + entry.getTerm());
 
         }
-
-        // 4) ACK success
-//                System.out.println("[Follower-" + nodeId + "] Sending success ACK, matchIndex=" + match);
         ackQ.put(new Ack(nodeId, 1, match, currentTerm));
     }
 
     @Override
     public void waitForAction() throws InterruptedException, IOException {
         System.out.println("[Follower-" + nodeId + "] Starting in term " + currentTerm);
-//        Thread beat = new Thread(new Beats(NodeRole.follower, beatsQueue, nodeId));
-//        beat.start();
-//        int cnt = 0;
         deadline = System.currentTimeMillis() + leaderTimeout;
         while (true) {
             RequestMessage rpc = readFromClient();
@@ -203,8 +185,8 @@ public class Follower implements CurrState {
                 rep.put("key", key);
                 rep.put("value", value);
                 replyQ.put(new ReplyMessage(rep));
-//                System.out.println("[Follower-" + nodeId + "] Sent GET response for key=" + key +
-//                        ", value=" + value);
+                System.out.println("[Follower-" + nodeId + "] Sent GET response for key=" + key +
+                        ", value=" + value);
             }
             if (rpc != null && rpc.getMsgType()==appendEntries) {
                 handleAppendEntries(rpc.getAppendEntries());
