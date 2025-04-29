@@ -118,7 +118,6 @@ public class MultiThreadProxy extends Thread {
     }
 
     public void queryFollower(RequestMessage requestMessage, int follower) throws InterruptedException {
-        this.followerId = registry.getFollowerId();
         this.followerQueues=registry.getAllFollowerQueues();
         followerQueues.get(follower).put(requestMessage);
     }

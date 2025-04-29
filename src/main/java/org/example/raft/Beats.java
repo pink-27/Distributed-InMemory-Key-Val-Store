@@ -47,11 +47,17 @@ public class Beats implements Runnable{
     public void sendBeats() throws InterruptedException {
         RequestMessage beat = new RequestMessage(MessageType.heartBeat);
         long time = getRandomTimeOutLeader();
+        int cnt=0;
         while(true){
             for(int i=0;i<4;i++){
                 followers.get(i).putFirst(beat);
             }
             sleep(time);
+            cnt++;
+            if(cnt==100){
+                registry.updateRole(nodeId,follower);
+                break;
+            }
         }
     }
 

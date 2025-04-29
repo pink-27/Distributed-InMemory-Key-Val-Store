@@ -23,7 +23,7 @@ public class ClusterRegistry {
 
     public void updateRole(int nodeId, NodeRole role) {
         BlockingDeque<RequestMessage> bdq = new LinkedBlockingDeque<>(100);
-        BlockingDeque<RequestMessage> beat = new LinkedBlockingDeque<>(100);
+        BlockingDeque<RequestMessage> beat = new LinkedBlockingDeque<>(10);
         nodeBeatsQueues.put(nodeId,beat);
         nodeInputQueues.put(nodeId, bdq);
         nodeRoles.put(nodeId, role);
@@ -69,7 +69,6 @@ public class ClusterRegistry {
         return nodeRoles.get(nodeId);
     }
 
-    // 🔽 Get leader's queue
     public BlockingDeque<RequestMessage> getLeaderQueue() {
         Integer leaderId = getLeaderId();
         if (leaderId != null) {
@@ -78,7 +77,6 @@ public class ClusterRegistry {
         return null;
     }
 
-    // 🔽 Get specific follower's queue
     public BlockingDeque<RequestMessage> getFollowerQueue(int followerId) {
         if (nodeRoles.get(followerId) == NodeRole.follower) {
             return nodeInputQueues.get(followerId);
@@ -86,7 +84,6 @@ public class ClusterRegistry {
         return null;
     }
 
-    // 🔽 Get all follower queues
     public ArrayList<BlockingDeque<RequestMessage>> getAllFollowerBeatsQueues() {
         ArrayList<BlockingDeque<RequestMessage>> queues = new ArrayList<>();
         for (Integer nodeId : getFollowerId()) {
@@ -96,7 +93,6 @@ public class ClusterRegistry {
         return queues;
     }
 
-    // 🔽 Get leader's queue
     public BlockingDeque<RequestMessage> getLeaderBeatsQueue() {
         Integer leaderId = getLeaderId();
         if (leaderId != null) {
@@ -105,7 +101,6 @@ public class ClusterRegistry {
         return null;
     }
 
-    // 🔽 Get specific follower's queue
     public BlockingDeque<RequestMessage> getFollowerBeatsQueue(int followerId) {
         if (nodeRoles.get(followerId) == NodeRole.follower) {
             return nodeBeatsQueues.get(followerId);
@@ -113,7 +108,6 @@ public class ClusterRegistry {
         return null;
     }
 
-    // 🔽 Get all follower queues
     public ArrayList<BlockingDeque<RequestMessage>> getAllFollowerQueues() {
         ArrayList<BlockingDeque<RequestMessage>> queues = new ArrayList<>();
         for (Integer nodeId : getFollowerId()) {
