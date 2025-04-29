@@ -119,7 +119,6 @@ Results may vary. And that’s part of the fun.
 ## Coming Soon (Maybe)
 
 - Real networking
-- Crash recovery that recovers something
 - Proper elections, not just a designated leader at launch
 
 ## License
