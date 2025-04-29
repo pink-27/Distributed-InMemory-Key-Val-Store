@@ -8,22 +8,31 @@ import java.util.concurrent.BlockingDeque;
 
 public class AppendEntries {
     private int currentTerm;
-    private int leaderID;
+    private int candidateLogIndex;
+    private int nodeID;
     private int prevLogIndex;
     private ArrayList<LogEntry> entries;       // Log entries to store (empty = heartbeat)
     private int leaderCommit;
-    private final MessageType msgType;
-    private final BlockingDeque<Ack>ackQueue;
+    private MessageType msgType;
+    private final BlockingDeque<Ack> ackQueue;
     private int prevLogTerm;
-    public AppendEntries(int currentTerm, int leaderID, int prevLogIndex,int prevLogTerm, ArrayList<LogEntry> entries, int leaderCommit, MessageType msgType, BlockingDeque<Ack> ackQueue) {
+    public AppendEntries(int currentTerm, int nodeID, int prevLogIndex,int prevLogTerm, ArrayList<LogEntry> entries, int leaderCommit, MessageType msgType, BlockingDeque<Ack> ackQueue) {
         this.currentTerm = currentTerm;
-        this.leaderID = leaderID;
+        this.nodeID = nodeID;
         this.prevLogIndex = prevLogIndex;
         this.entries = entries;
         this.leaderCommit = leaderCommit;
         this.msgType = msgType;
         this.prevLogTerm=prevLogTerm;
         this.ackQueue = ackQueue;
+    }
+
+    public AppendEntries(int currentTerm, Integer nodeId, int candidateLogIndex, MessageType messageType, BlockingDeque<Ack> ackQueue) {
+        this.currentTerm = currentTerm;
+        this.candidateLogIndex = candidateLogIndex;
+        this.ackQueue = ackQueue;
+        this.nodeID = nodeId;
+        this.msgType=messageType;
     }
 
     public MessageType getMsgType() {
@@ -43,7 +52,7 @@ public class AppendEntries {
     }
 
     public int getLeaderID() {
-        return leaderID;
+        return nodeID;
     }
 
     public int getCurrentTerm() {
@@ -56,5 +65,9 @@ public class AppendEntries {
 
     public int getPrevLogTerm() {
         return prevLogTerm;
+    }
+
+    public int getCandidateLogIndex() {
+        return candidateLogIndex;
     }
 }

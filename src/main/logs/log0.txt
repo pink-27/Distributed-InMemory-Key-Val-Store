@@ -5,3 +5,14 @@
 {"op":"PUT","index":4,"term":0,"value":"4","key":"4"}
 {"op":"PUT","index":5,"term":0,"value":"5","key":"5"}
 {"op":"PUT","index":6,"term":0,"value":"7","key":"7"}
+{"op":"PUT","index":7,"term":0,"value":"v","key":"v"}
+{"op":"PUT","index":8,"term":0,"value":"","key":"vihan"}
+{"op":"PUT","index":9,"term":0,"value":"rohin","key":"vihan"}
+{"op":"PUT","index":10,"term":0,"value":"tanshu","key":"vanshu"}
+{"op":"PUT","index":11,"term":0,"value":"asd","key":"hh"}
+{"op":"PUT","index":12,"term":0,"value":"dasda","key":"dasd"}
+{"op":"PUT","index":13,"term":0,"value":"nope","key":"no idea"}
+{"op":"PUT","index":14,"term":0,"value":"vihan","key":"vihan"}
+{"op":"PUT","index":15,"term":0,"value":"11","key":"abcd"}
+{"op":"PUT","index":16,"term":0,"value":"aa","key":"abcd"}
+{"op":"PUT","index":17,"term":0,"value":"123","key":"123"}

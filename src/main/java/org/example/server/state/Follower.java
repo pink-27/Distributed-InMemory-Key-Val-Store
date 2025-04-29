@@ -3,6 +3,7 @@ package org.example.server.state;
 import org.example.logger.FileLogger;
 import org.example.logger.LogEntry;
 import org.example.message.AppendEntries;
+import org.example.message.MessageType;
 import org.example.raft.Ack;
 import org.example.raft.Beats;
 import org.example.raft.ClusterRegistry;
@@ -14,35 +15,36 @@ import org.json.JSONObject;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.concurrent.BlockingDeque;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 import static java.lang.Thread.sleep;
 import static org.example.message.MessageType.*;
 
 public class Follower implements CurrState {
-    private BlockingDeque<RequestMessage> readQueue;
-    private BlockingDeque<RequestMessage> beatsQueue;
+    private final BlockingDeque<RequestMessage> readQueue;
+    private final BlockingDeque<RequestMessage> beatsQueue;
     private inMemoryStore store;
-    private HashMap<Integer, BlockingDeque<ReplyMessage>> clientReplyQueue = new HashMap<>();
-    private Integer nodeId;
-    private ClusterRegistry registry = ClusterRegistry.getInstance();
+    private final HashMap<Integer, BlockingDeque<ReplyMessage>> clientReplyQueue = new HashMap<>();
+    private final Integer nodeId;
+    private final ClusterRegistry registry = ClusterRegistry.getInstance();
     private FileLogger logger;
     private int currentTerm;
     private int votedFor;
     private ArrayList<LogEntry> log;
-
+    private long leaderTimeout;
     private int commitIndex = -1;
     private int lastApplied = -1;      // ← track what we've already applied
+    ScheduledExecutorService hbListenerScheduler = Executors.newSingleThreadScheduledExecutor();
 
     // matchIndex / nextIndex shared maps
     private HashMap<Integer, Integer> nextIndex;
     private HashMap<Integer, Integer> matchIndex;
-
+    long deadline;
     public Follower(int nodeId) {
         this.nodeId = nodeId;
         this.readQueue = registry.getFollowerQueue(nodeId);
         this.beatsQueue = registry.getFollowerBeatsQueue(nodeId);
+        this.leaderTimeout = 1000 + (long) (Math.random() * 150); // 1000–1150 ms
         System.out.println("[Follower-" + nodeId + "] Created");
     }
 
@@ -50,109 +52,128 @@ public class Follower implements CurrState {
         return readQueue.poll(5, TimeUnit.MILLISECONDS);
     }
 
-    private boolean checkClientConnExists(int clientID) {
-        return clientReplyQueue.containsKey(clientID);
-    }
-
-    public void establishConn(int clientID, BlockingDeque<ReplyMessage> replyQueue) {
-        if (!checkClientConnExists(clientID)) {
-            clientReplyQueue.put(clientID, replyQueue);
-            System.out.println("[Follower-" + nodeId + "] Established connection with client " + clientID);
-        }
-    }
-
-    public void replyToClient(int clientID, ReplyMessage msg) throws InterruptedException {
-        clientReplyQueue.get(clientID).put(msg);
-    }
 
     public void setStore(inMemoryStore store) {
         this.store = store;
         System.out.println("[Follower-" + nodeId + "] Store set");
     }
 
+    private boolean sendVoteRequest() throws InterruptedException {
+//        ArrayList<BlockingDeque<RequestMessage>> followers = registry.getAllFollowerQueues();
+        ArrayList<Integer> followers = registry.getFollowerId();
+        for (int i = 0; i < followers.size(); i++) {
+            if (registry.getFollowerQueue(followers.get(i)).hashCode() == readQueue.hashCode()) {
+                followers.remove(i);
+                break;
+            }
+        }
+        // entries to send
+
+
+        BlockingDeque<Ack> ackQueue = new LinkedBlockingDeque<>(100);
+        AppendEntries rpc = new AppendEntries(
+                currentTerm,
+                nodeId,
+                log.size() - 1,
+                requestVote,
+                ackQueue
+        );
+        RequestMessage msg = new RequestMessage(requestVote, rpc);
+        for (int i = 0; i < followers.size(); i++) {
+            registry.getFollowerQueue(followers.get(i)).putFirst(msg);
+        }
+        int votes = 1;
+        while (!ackQueue.isEmpty()) {
+            Ack ack = ackQueue.poll(1500, TimeUnit.MILLISECONDS);
+            if (ack != null) {
+                votes += ack.getSuccess();
+            }
+        }
+        return votes >= 3;
+    }
+
+    public void handleAppendEntries(AppendEntries ae) throws InterruptedException {
+        BlockingDeque<Ack> ackQ = ae.getAckQueue();
+
+        // 1) reject stale term
+        if (ae.getCurrentTerm() < currentTerm) {
+
+            ackQ.put(new Ack(nodeId, 0, -1, currentTerm));
+            return;
+        }
+        currentTerm = ae.getCurrentTerm();
+
+        // 2) log consistency
+        int prevIdx = ae.getPrevLogIndex();
+        int prevTerm = ae.getPrevLogTerm();
+        if (prevIdx >= log.size() ||
+                (prevIdx >= 0 && log.get(prevIdx).getTerm() != prevTerm)) {
+            ackQ.put(new Ack(nodeId, 0, -1, currentTerm));
+            return;
+        }
+
+        // 3) append new entries
+        int match = prevIdx;
+        int turncateIndex = prevIdx + 1;
+        while (log.size() > turncateIndex) {
+            log.remove(log.size() - 1);
+        }
+
+        for (LogEntry entry : ae.getEntries()) {
+            int idx = entry.getIndex();
+            log.add(entry);
+            match = idx;
+
+        }
+        ackQ.put(new Ack(nodeId, 1, match, currentTerm));
+    }
+
     @Override
     public void waitForAction() throws InterruptedException, IOException {
         System.out.println("[Follower-" + nodeId + "] Starting in term " + currentTerm);
-        Thread beat = new Thread(new Beats(NodeRole.follower, beatsQueue, nodeId));
-        beat.start();
-        int cnt = 0;
+        deadline = System.currentTimeMillis() + leaderTimeout;
         while (true) {
-            if (nodeId == 1 && cnt == 0) {
-                registry.updateRole(nodeId, NodeRole.candidate);
-                sleep(30000, TimeUnit.MILLISECONDS.ordinal());
-                registry.updateRole(nodeId, NodeRole.follower);
-                this.readQueue = registry.getFollowerQueue(nodeId);
-
-            }
-            cnt++;
             RequestMessage rpc = readFromClient();
-            if (rpc == null) continue;
+            RequestMessage beat = beatsQueue.poll();
+
+            if (System.currentTimeMillis() > deadline) {
+                registry.updateRole(nodeId, NodeRole.candidate);
+            }
 
             if (registry.getRole(nodeId) != NodeRole.follower) {
-                System.out.println("[Follower-" + nodeId + "] Role changed, exiting follower loop");
-                break;
+                System.out.println("[Follower-" + nodeId + "] Role changed to Candidate, exiting follower loop");
+                currentTerm+=1;
+                boolean isLeader = sendVoteRequest();
+                if (!isLeader) {
+                    registry.updateRole(nodeId, NodeRole.follower);
+                    currentTerm--;
+                } else {
+                    registry.updateRole(nodeId, NodeRole.leader);
+                    break;
+                }
+
+            } else if (rpc != null && rpc.getMsgType() == requestVote) {
+                int vote = 0;
+                if (currentTerm == rpc.getAppendEntries().getCurrentTerm() && votedFor == -1) {
+                    if (log.size() - 1 < rpc.getAppendEntries().getCandidateLogIndex()) {
+                        vote = 1;
+                    }
+                }
+                if (currentTerm < rpc.getAppendEntries().getCurrentTerm() && votedFor == -1) {
+                    vote = 1;
+                }
+                Ack ack = new Ack(nodeId, vote, -1, currentTerm);
+                votedFor=rpc.getAppendEntries().getLeaderID();
+                rpc.getAppendEntries().getAckQueue().put(ack);
             }
+            else if (rpc != null && rpc.getMsgType() == putMessage) {
+                JSONObject jsonReq = rpc.getJson();
 
-            if (rpc.getMsgType() == appendEntries) {
-                AppendEntries ae = rpc.getAppendEntries();
-                BlockingDeque<Ack> ackQ = ae.getAckQueue();
-
-                System.out.println("[Follower-" + nodeId + "] Received AppendEntries from leader " + registry.getLeaderId() +
-                        ", term=" + ae.getCurrentTerm() + ", prevLogIndex=" + ae.getPrevLogIndex() +
-                        ", entries=" + ae.getEntries().size());
-
-                // 1) reject stale term
-                if (ae.getCurrentTerm() < currentTerm) {
-                    System.out.println("[Follower-" + nodeId + "] Rejecting stale term " + ae.getCurrentTerm() +
-                            " (current=" + currentTerm + ")");
-                    ackQ.put(new Ack(nodeId, 0, -1));
-                    continue;
-                }
-                currentTerm = ae.getCurrentTerm();
-
-                // 2) log consistency
-                int prevIdx = ae.getPrevLogIndex();
-                int prevTerm = ae.getPrevLogTerm();
-                if (prevIdx >= log.size() ||
-                        (prevIdx >= 0 && log.get(prevIdx).getTerm() != prevTerm)) {
-                    System.out.println("[Follower-" + nodeId + "] Log inconsistency at index " + prevIdx +
-                            ", my log size=" + log.size());
-                    ackQ.put(new Ack(nodeId, 0, -1));
-                    continue;
-                }
-
-                // 3) append new entries
-                int match = prevIdx;
-                int turncateIndex = prevIdx + 1;
-                while (log.size() > turncateIndex) {
-                    log.remove(log.size() - 1);
-                }
-                if (!ae.getEntries().isEmpty()) {
-                    System.out.println("[Follower-" + nodeId + "] Appending " + ae.getEntries().size() + " entries");
-                }
-
-                for (LogEntry entry : ae.getEntries()) {
-                    int idx = entry.getIndex();
-                    log.add(entry);
-                    match = idx;
-                    System.out.println("[Follower-" + nodeId + "] Added entry at index " + idx +
-                            ", term=" + entry.getTerm());
-
-                }
-
-                // 4) ACK success
-                System.out.println("[Follower-" + nodeId + "] Sending success ACK, matchIndex=" + match);
-                ackQ.put(new Ack(nodeId, 1, match));
-                continue;
-            }
-
-            // client-driven commit notification
-            JSONObject jsonReq = rpc.getJson();
-            if (rpc.getMsgType() == putMessage) {
                 int leaderCommit = jsonReq.getInt("commitIndex");
                 System.out.println("[Follower-" + nodeId + "] Received commit notification, leaderCommit=" + leaderCommit);
                 commit(leaderCommit);
-            } else if (rpc.getMsgType() == getMessage) {
+            } else if (rpc!=null && rpc.getMsgType() == getMessage) {
+                JSONObject jsonReq = rpc.getJson();
                 int clientID = jsonReq.getInt("client");
                 String key = jsonReq.getString("key");
                 System.out.println("[Follower-" + nodeId + "] GET request from client " + clientID +
@@ -167,6 +188,17 @@ public class Follower implements CurrState {
                 System.out.println("[Follower-" + nodeId + "] Sent GET response for key=" + key +
                         ", value=" + value);
             }
+            if (rpc != null && rpc.getMsgType()==appendEntries) {
+                handleAppendEntries(rpc.getAppendEntries());
+                deadline = System.currentTimeMillis() + leaderTimeout;
+
+            }
+            else if (beat != null && beat.getMsgType()==appendEntries) {
+                handleAppendEntries(beat.getAppendEntries());
+                deadline = System.currentTimeMillis() + leaderTimeout;
+
+            }
+
         }
     }
 
