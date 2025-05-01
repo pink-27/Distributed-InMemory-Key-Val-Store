@@ -96,11 +96,9 @@ Then throw JSON at it and watch the consensus circus.
 
 ## Limitations & Next Steps
 
-- **No snapshots**: log grows forever—bring a bigger disk.
+- **No snapshots**: log grows forever, we need bring a bigger disk.
 - **Single‑JVM**: no real network faults, but you get threads flaming out.
-- **ReadIndex/leases**: not yet—followers might serve stale reads.
 - **Dynamic membership**: someday you’ll add nodes without restarting everything.
-
 ---
 
 MIT License — hack it, break it, impress your peers with your consensus cred.
