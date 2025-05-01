@@ -101,5 +101,5 @@ Then throw JSON at it and watch the consensus circus.
 - **Dynamic membership**: someday you’ll add nodes without restarting everything.
 ---
 
-MIT License — hack it, break it, impress your peers with your consensus cred.
+MIT License —> hack it, break it, impress your peers with your consensus cred.
 
