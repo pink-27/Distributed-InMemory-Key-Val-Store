@@ -5,16 +5,13 @@ import org.example.logger.LogEntry;
 import org.example.message.AppendEntries;
 import org.example.message.MessageType;
 import org.example.raft.Ack;
-import org.example.raft.Beats;
 import org.example.raft.ClusterRegistry;
 import org.example.store.inMemoryStore;
 import org.example.message.RequestMessage;
 import org.json.JSONObject;
 
 import java.io.IOException;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.concurrent.*;
 
 import static java.lang.Thread.sleep;
