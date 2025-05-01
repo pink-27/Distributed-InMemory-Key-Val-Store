@@ -7,7 +7,7 @@ An in‑JVM key‑value store with enough Raft consensus to feel distributed, wi
 ## What’s New in V3
 
 - **Raft Consensus**: real leader elections (no emperor’s new clothes), AppendEntries, terms, and quorum-based commits.
-- **Heartbeat Scheduler**: leader’s metronome—beats every `beatTime` ms to keep followers from staging a coup.
+- **Heartbeat Scheduler**: leader’s metronome beats every `beatTime` ms to keep followers from staging a coup.
 - **Persistent Metadata**: `currentTerm` & `votedFor` on disk (`metaX.txt`), so crashes don’t invent ghost votes.
 - **Durable Command Log**: every `PUT` is immortalized in `log0X.txt`,replayed on restart, because amnesia is cheating.
 
@@ -20,8 +20,8 @@ An in‑JVM key‑value store with enough Raft consensus to feel distributed, wi
 | **PUT**   | Proxy → Leader             | Linearizable (strict order, no surprises) |
 | **GET**   | Proxy → Random Follower    | Eventual (fast reads, occasional staleness) |
 
-- **TCP+JSON** interface—because HTTP is so 2005.
-- **Leader election**: followers timeout, become candidates, shake virtual ballots—one winner per term.
+- **TCP+JSON** interface because HTTP is so 2005.
+- **Leader election**: followers timeout, become candidates, shake virtual ballots one winner per term.
 - **Log replication**: leader maintains `nextIndex`/`matchIndex`, retries on failure, holds grudges.
 - **Commit**: majority ACK → leader advances `commitIndex` → state machine applies.
 - **Election safety**: one vote per term, enforced by persisted `votedFor`.
@@ -45,7 +45,7 @@ Client ↔ Proxy ↔ Raft Nodes (threads in one JVM, dramatic flair)
   - **Leader**: schedules heartbeats, handles PUTs, replicates logs, tracks quorum, commits & applies.
 4. **Heartbeat Scheduler**
   - Leader’s `ScheduledExecutorService` fires AppendEntries (no entries) every `beatTime` ms.
-  - Followers reset `deadline` on valid heartbeat—no heartbeat = panic election.
+  - Followers reset `deadline` on valid heartbeat and no heartbeat = panic election.
 5. **Persistence** (`FileLogger`)
   - Command log: JSON lines in `log0X.txt`.
   - Metadata: JSON in `metaX.txt`, so `currentTerm` & `votedFor` survive reboots.
