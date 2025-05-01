@@ -19,7 +19,7 @@ public class FileLogger {
 
     public FileLogger(int name, inMemoryStore store) throws IOException {
         this.nodeId = name;
-        this.path = path + "/" + "log" + name + ".txt";
+        this.path = path + "/" + "log0"+ ".txt";
         this.metaFile = new File("src/main/logs/meta" + name + ".txt");
         this.store = store;
         this.file = new File(path);

@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.ConcurrentHashMap;
 
 
 public interface CurrState {
@@ -19,6 +20,6 @@ public interface CurrState {
     public void setCommitIndex(int commitIndex);
     public void setLastApplied(int lastApplied);
 
-    public void setMetaData(int votedFor, int currentTerm, ArrayList<LogEntry> log, HashMap<Integer,Integer> matchIndex, HashMap<Integer,Integer> nextIndex);
+    public void setMetaData(Integer votedFor, Integer currentTerm, ArrayList<LogEntry> log, ConcurrentHashMap<Integer,Integer> matchIndex, ConcurrentHashMap<Integer,Integer> nextIndex);
 
 }

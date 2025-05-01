@@ -1,0 +1,1 @@
+{"votedFor":3,"currentTerm":130}

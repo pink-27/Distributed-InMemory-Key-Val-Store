@@ -5,7 +5,6 @@ import org.example.logger.LogEntry;
 import org.example.message.AppendEntries;
 import org.example.message.MessageType;
 import org.example.raft.Ack;
-import org.example.raft.Beats;
 import org.example.raft.ClusterRegistry;
 import org.example.store.inMemoryStore;
 import org.example.message.RequestMessage;
@@ -13,8 +12,10 @@ import org.json.JSONObject;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.concurrent.*;
+
+import static java.lang.Thread.sleep;
+import static org.example.server.state.NodeRole.follower;
 
 /**
  * Leader implementation with correct Raft append-entries, log replication, commit, and durability.
@@ -29,31 +30,33 @@ public class Leader implements CurrState {
     private final ClusterRegistry registry = ClusterRegistry.getInstance();
     private FileLogger logger;
     private long beatTime;
-    private int currentTerm;
-    private int votedFor;
+    private final BlockingDeque<RequestMessage> beatsQueue;
+    private Integer currentTerm;
+    private Integer votedFor;
     private int leaderCommitIndex = -1;
     private int lastAppliedIndex = -1;
-    private int isLeader;
+    private volatile int isLeader;
     ScheduledExecutorService hbScheduler = Executors.newSingleThreadScheduledExecutor();
 
     private ArrayList<LogEntry> log = new ArrayList<>();
 
     // nextIndex and matchIndex per follower
-    private HashMap<Integer, Integer> nextIndex = new HashMap<>();
-    private HashMap<Integer, Integer> matchIndex = new HashMap<>();
+    private ConcurrentHashMap<Integer, Integer> nextIndex = new ConcurrentHashMap<>();
+    private ConcurrentHashMap<Integer, Integer> matchIndex = new ConcurrentHashMap<>();
 
     public Leader(int nodeId) {
         this.nodeId = nodeId;
         this.writeQueue = registry.getLeaderQueue();
-        this.isLeader=1;
-        this.followers = registry.getAllFollowerQueues();
-        this.beatsQueues = registry.getAllFollowerBeatsQueues();
+        this.isLeader = 1;
+        this.beatsQueue = registry.getBeatsQueue(nodeId);
+        this.followers = registry.getAllPeersQueues(nodeId);
+        this.beatsQueues = registry.getAllPeersBeatsQueues(nodeId);
         this.ackQueue = new LinkedBlockingDeque<>(100);
-        this.beatTime= (15 + (long)(Math.random() * 10));
+        this.beatTime = (15 + (long) (Math.random() * 10));
 
         System.out.println("[Leader-" + nodeId + "] Initializing heartbeat scheduler with beat time: " + beatTime + "ms");
         // initialize indices for each follower
-        ArrayList<Integer>fids=registry.getFollowerId();
+        ArrayList<Integer> fids = registry.getFollowerId();
         for (int i = 0; i < fids.size(); i++) {
             nextIndex.put(fids.get(i), 0);
             matchIndex.put(fids.get(i), -1);
@@ -93,10 +96,6 @@ public class Leader implements CurrState {
             entriesToSend.add(log.get(i));
         }
 
-//        System.out.println("[Leader-" + nodeId + "] Sending AppendEntries to follower " + followerId +
-//                ", prevIndex=" + prevIndex + ", prevTerm=" + prevTerm +
-//                ", entries=" + entriesToSend.size() + ", nextIndex=" + nextIndex.get(followerId));
-
         AppendEntries rpc = new AppendEntries(
                 currentTerm,
                 nodeId,
@@ -108,7 +107,6 @@ public class Leader implements CurrState {
                 ackQueue
         );
         RequestMessage msg = new RequestMessage(MessageType.appendEntries, rpc);
-//        System.out.println("[Leaderader-" + nodeId + "] Putting AppendEntries in follower " + followerId + "'s queue");
         registry.getFollowerQueue(followerId).putFirst(msg);
     }
 
@@ -116,13 +114,14 @@ public class Leader implements CurrState {
         System.out.println("[Leader-" + nodeId + "] Broadcasting AppendEntries to " + followers.size() + " followers");
         System.out.println("[Leader-" + nodeId + "] Clearing previous ACK queue");
         this.ackQueue.clear();
-        ArrayList<Integer>followerID = registry.getFollowerId();
+        ArrayList<Integer> followerID = registry.getFollowerId();
         System.out.println("[Leader-" + nodeId + "] Found " + followerID.size() + " follower IDs");
         for (int i = 0; i < followerID.size(); i++) {
             System.out.println("[Leader-" + nodeId + "] Starting AppendEntries broadcast to follower " + followerID.get(i));
             sendAppendEntriesToFollower(followerID.get(i));
         }
     }
+
     /**
      * Count acknowledgments and update nextIndex/matchIndex.
      */
@@ -147,15 +146,16 @@ public class Leader implements CurrState {
 
                 } else {
                     failure++;
-                    if(ack.getCurrentTerm()>currentTerm){
+                    if (ack.getCurrentTerm() > currentTerm) {
 
-                        currentTerm=ack.getCurrentTerm();
-                        isLeader=0;
+                        currentTerm = ack.getCurrentTerm();
+                        isLeader = 0;
                         return false;
                     }
                     nextIndex.compute(ack.getNodeId(), (k, oldNextIndex) -> Math.max(0, oldNextIndex - 1));
                     try {
                         sendAppendEntriesToFollower(ack.getNodeId());
+                        deadline += 5000;
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
@@ -167,18 +167,18 @@ public class Leader implements CurrState {
             }
         }
 
-        boolean hasQuorum = success >= required;
+        boolean hasQuorum = success >= 3;
 
         return hasQuorum;
     }
-    public void sendHeartBeat() throws InterruptedException {
-        this.followers=registry.getAllFollowerBeatsQueues();
-        ArrayList<Integer>followerID = registry.getFollowerId();
 
-        for (int i = 0; i < followerID.size(); i++) {
-            int prevIndex = nextIndex.get(followerID.get(i)) - 1;
+    public void sendHeartBeat() throws InterruptedException {
+        if (isLeader == 0) return;
+        ArrayList<Integer> peersID = registry.getAllPeersIds(nodeId);
+        for (int i = 0; i < peersID.size(); i++) {
+            int prevIndex = nextIndex.get(peersID.get(i)) - 1;
             RequestMessage msg = getRequestMessage(prevIndex);
-            registry.getFollowerBeatsQueue(followerID.get(i)).offer(msg);
+            registry.getBeatsQueue(peersID.get(i)).offer(msg);
         }
         hasQuorum();
 
@@ -188,33 +188,56 @@ public class Leader implements CurrState {
         int prevTerm = (prevIndex >= 0 ? log.get(prevIndex).getTerm() : 0);
         ArrayList<LogEntry> entries = new ArrayList<>();
 
-        AppendEntries rpc = new AppendEntries(currentTerm,nodeId, prevIndex,prevTerm,entries,leaderCommitIndex,MessageType.appendEntries,ackQueue);
-        RequestMessage msg = new RequestMessage(MessageType.appendEntries, rpc);
-        return msg;
+        AppendEntries rpc = new AppendEntries(currentTerm, nodeId, prevIndex, prevTerm, entries, leaderCommitIndex, MessageType.appendEntries, ackQueue);
+        return new RequestMessage(MessageType.appendEntries, rpc);
     }
 
     @Override
     public void waitForAction() throws InterruptedException, IOException {
         System.out.println("[Leader-" + nodeId + "] Starting in term " + currentTerm +
                 ", log size=" + log.size());
-
-        hbScheduler.scheduleWithFixedDelay(()->{
+        ScheduledFuture<?> heartbeatTask = hbScheduler.scheduleWithFixedDelay(() -> {
+            if (Thread.currentThread().isInterrupted()) return;
             try {
                 sendHeartBeat();
             } catch (InterruptedException e) {
                 System.out.println("[Leader-" + nodeId + "] Error during heartbeat: " + e.getMessage());
-                throw new RuntimeException(e);
+                Thread.currentThread().interrupt(); // preserve interruption status
+
             }
-        },0,beatTime,TimeUnit.MILLISECONDS);
-        while (isLeader==1) {
+        }, 0, beatTime, TimeUnit.MILLISECONDS);
+
+//        int cnt = 0;
+        while (isLeader == 1) {
+//            cnt++;
+//            if (cnt == 1000) {
+//                isLeader = 0;
+//                heartbeatTask.cancel(true);
+//                hbScheduler.shutdownNow();
+////                sleep(10000, TimeUnit.MILLISECONDS.ordinal());
+//                break;
+//            }
             RequestMessage req = readFromClient();
+            RequestMessage beat = beatsQueue.poll();
+            if (beat != null && beat.getAppendEntries().getCurrentTerm() >= currentTerm) {
+                isLeader = 0;
+                heartbeatTask.cancel(true);
+                hbScheduler.shutdownNow();
+                break;
+            }
+
             if (registry.getRole(nodeId) != NodeRole.leader) {
+                isLeader = 0;
+                heartbeatTask.cancel(true);
                 System.out.println("[Leader-" + nodeId + "] No longer the leader, shutting down heartbeat scheduler");
                 hbScheduler.shutdownNow();
                 break;
             }
             if (req == null) continue;
+
             JSONObject j = req.getJson();
+            if(j==null)continue;
+            if (!j.has("key")) continue;
             String key = j.getString("key");
             String value = j.getString("value");
 
@@ -222,7 +245,7 @@ public class Leader implements CurrState {
                     ", value=" + value);
 
             // 1) Append to local log
-            this.followers = registry.getAllFollowerQueues();
+            this.followers = registry.getAllPeersQueues(nodeId);
             int entryIndex = log.size();
             LogEntry entry = new LogEntry(entryIndex, currentTerm, key, value);
             log.add(entry);
@@ -277,6 +300,9 @@ public class Leader implements CurrState {
                 // Could add a retry mechanism here
             }
         }
+        isLeader = 0;
+        heartbeatTask.cancel(true);
+        registry.updateRole(nodeId, follower);
         System.out.println("[Leader-" + nodeId + "] Exiting leader loop, isLeader=" + isLeader);
     }
 
@@ -313,7 +339,7 @@ public class Leader implements CurrState {
     }
 
     @Override
-    public void setMetaData(int votedFor, int currentTerm, ArrayList<LogEntry> log, HashMap<Integer, Integer> matchIndex, HashMap<Integer, Integer> nextIndex) {
+    public void setMetaData(Integer votedFor, Integer currentTerm, ArrayList<LogEntry> log, ConcurrentHashMap<Integer, Integer> matchIndex, ConcurrentHashMap<Integer, Integer> nextIndex) {
         this.votedFor = votedFor;
         this.currentTerm = currentTerm;
         this.log = log;
@@ -332,9 +358,9 @@ public class Leader implements CurrState {
         }
         for (Integer i : matchIndex.keySet()) {
             int oldVal = matchIndex.get(i);
-            matchIndex.put(i, log.size()-1);
+            matchIndex.put(i, log.size() - 1);
             System.out.println("[Leader-" + nodeId + "] Initialized matchIndex for follower " + i +
-                    ": " + oldVal + " -> " + (log.size()-1));
+                    ": " + oldVal + " -> " + (log.size() - 1));
         }
     }
 }

@@ -16,6 +16,7 @@ public class AppendEntries {
     private MessageType msgType;
     private final BlockingDeque<Ack> ackQueue;
     private int prevLogTerm;
+    int candiDateLogTerm;
     public AppendEntries(int currentTerm, int nodeID, int prevLogIndex,int prevLogTerm, ArrayList<LogEntry> entries, int leaderCommit, MessageType msgType, BlockingDeque<Ack> ackQueue) {
         this.currentTerm = currentTerm;
         this.nodeID = nodeID;
@@ -27,12 +28,13 @@ public class AppendEntries {
         this.ackQueue = ackQueue;
     }
 
-    public AppendEntries(int currentTerm, Integer nodeId, int candidateLogIndex, MessageType messageType, BlockingDeque<Ack> ackQueue) {
+    public AppendEntries(int currentTerm, int candlogterm, Integer nodeId, int candidateLogIndex, MessageType messageType, BlockingDeque<Ack> ackQueue) {
         this.currentTerm = currentTerm;
         this.candidateLogIndex = candidateLogIndex;
         this.ackQueue = ackQueue;
         this.nodeID = nodeId;
         this.msgType=messageType;
+        this.candiDateLogTerm=candlogterm;
     }
 
     public MessageType getMsgType() {
@@ -69,5 +71,9 @@ public class AppendEntries {
 
     public int getCandidateLogIndex() {
         return candidateLogIndex;
+    }
+
+    public int getCandidateLogTerm() {
+        return candiDateLogTerm;
     }
 }
