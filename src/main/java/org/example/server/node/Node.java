@@ -72,7 +72,7 @@ public class Node implements Nodes, Runnable {
     }
 
     /**
-     * Recover everything from disk into memory, then push into the state before doing any work
+     Recover everything from disk into memory, then push into the state before doing any work
      */
     private void recoverAllMetadata() throws IOException {
         // 1) tell the state about the logger

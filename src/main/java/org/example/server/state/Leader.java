@@ -96,10 +96,6 @@ public class Leader implements CurrState {
             entriesToSend.add(log.get(i));
         }
 
-//        System.out.println("[Leader-" + nodeId + "] Sending AppendEntries to follower " + followerId +
-//                ", prevIndex=" + prevIndex + ", prevTerm=" + prevTerm +
-//                ", entries=" + entriesToSend.size() + ", nextIndex=" + nextIndex.get(followerId));
-
         AppendEntries rpc = new AppendEntries(
                 currentTerm,
                 nodeId,
@@ -111,7 +107,6 @@ public class Leader implements CurrState {
                 ackQueue
         );
         RequestMessage msg = new RequestMessage(MessageType.appendEntries, rpc);
-//        System.out.println("[Leaderader-" + nodeId + "] Putting AppendEntries in follower " + followerId + "'s queue");
         registry.getFollowerQueue(followerId).putFirst(msg);
     }
 
@@ -212,16 +207,16 @@ public class Leader implements CurrState {
             }
         }, 0, beatTime, TimeUnit.MILLISECONDS);
 
-        int cnt = 0;
+//        int cnt = 0;
         while (isLeader == 1) {
-            cnt++;
-            if (cnt == 1000) {
-                isLeader = 0;
-                heartbeatTask.cancel(true);
-                hbScheduler.shutdownNow();
-//                sleep(10000, TimeUnit.MILLISECONDS.ordinal());
-                break;
-            }
+//            cnt++;
+//            if (cnt == 1000) {
+//                isLeader = 0;
+//                heartbeatTask.cancel(true);
+//                hbScheduler.shutdownNow();
+////                sleep(10000, TimeUnit.MILLISECONDS.ordinal());
+//                break;
+//            }
             RequestMessage req = readFromClient();
             RequestMessage beat = beatsQueue.poll();
             if (beat != null && beat.getAppendEntries().getCurrentTerm() >= currentTerm) {
@@ -308,7 +303,6 @@ public class Leader implements CurrState {
         isLeader = 0;
         heartbeatTask.cancel(true);
         registry.updateRole(nodeId, follower);
-
         System.out.println("[Leader-" + nodeId + "] Exiting leader loop, isLeader=" + isLeader);
     }
 
