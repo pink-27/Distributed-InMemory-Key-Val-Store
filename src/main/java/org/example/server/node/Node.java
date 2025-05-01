@@ -10,6 +10,7 @@ import org.example.message.ReplyMessage;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static org.example.server.state.NodeRole.*;
 
@@ -21,11 +22,11 @@ public class Node implements Nodes, Runnable {
     private final ClusterRegistry registry = ClusterRegistry.getInstance();
     int first=0;
     // Raft metadata
-    private int currentTerm;
-    private int votedFor;
+    private Integer currentTerm;
+    private Integer votedFor;
     private ArrayList<LogEntry> log;
-    private HashMap<Integer, Integer> nextIndex;
-    private HashMap<Integer, Integer> matchIndex;
+    private ConcurrentHashMap<Integer, Integer> nextIndex;
+    private ConcurrentHashMap<Integer, Integer> matchIndex;
 
     private final FileLogger logger;
 
@@ -35,7 +36,7 @@ public class Node implements Nodes, Runnable {
         this.state.setStore(store);
         this.nodeId = nodeId;
         this.log = new ArrayList<>();
-        this.logger = new FileLogger(0, store);
+        this.logger = new FileLogger(nodeId, store);
     }
 
     @Override
@@ -46,7 +47,7 @@ public class Node implements Nodes, Runnable {
     @Override
     public void startNode() throws InterruptedException, IOException {
         // enter the state's main loop
-        first++;
+        first=1;
 
         state.waitForAction();
 
@@ -87,9 +88,9 @@ public class Node implements Nodes, Runnable {
         votedFor = logger.getVotedFor();
 
         // 4) init nextIndex & matchIndex = “just past end” of log
-        ArrayList<Integer> followers= registry.getFollowerId();
-        nextIndex = new HashMap<>();
-        matchIndex = new HashMap<>();
+        ArrayList<Integer> followers= registry.getAllPeersIds(nodeId);
+        nextIndex = new ConcurrentHashMap<>();
+        matchIndex = new ConcurrentHashMap<>();
         for (int i = 0; i < followers.size(); i++) {
             nextIndex.put(followers.get(i), 0);
             matchIndex.put(followers.get(i), -1);

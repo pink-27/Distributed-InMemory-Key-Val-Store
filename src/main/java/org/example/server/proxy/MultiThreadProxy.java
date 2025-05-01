@@ -117,17 +117,14 @@ public class MultiThreadProxy extends Thread {
         System.out.println("ClientHandler-" + clientID + " closed");
     }
 
-    public void queryFollower(RequestMessage requestMessage, int follower) throws InterruptedException {
-        this.followerQueues=registry.getAllFollowerQueues();
-        followerQueues.get(follower).put(requestMessage);
+    public void queryFollower(RequestMessage requestMessage) throws InterruptedException {
+        registry.getRandomFollowerQueue().put(requestMessage);
     }
 
 
     public void getValue(JSONObject msg) throws IOException, InterruptedException {
         RequestMessage requestMessage= new RequestMessage(msg,replyQueue, MessageType.getMessage);
-        this.followerId = registry.getFollowerId();
-        int randomNum = (int) (Math.random()*(followerId.size()));
-        queryFollower(requestMessage,randomNum);
+        queryFollower(requestMessage);
         ReplyMessage res = replyQueue.take();
         JSONObject response = res.getJson();
 
@@ -145,7 +142,10 @@ public class MultiThreadProxy extends Thread {
     }
 
     public void sendToLeader(RequestMessage msg) throws InterruptedException {
-        this.writerQueue=registry.getLeaderQueue();
+        while(true) {
+            this.writerQueue = registry.getLeaderQueue();
+            if(writerQueue!=null)break;
+        }
         writerQueue.put(msg);
     }
     public void updateKeyValue(JSONObject msg) throws IOException, InterruptedException {
