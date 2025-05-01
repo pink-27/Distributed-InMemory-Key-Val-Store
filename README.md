@@ -1,6 +1,6 @@
 # Java Key‑Value Store V3 (Raft‑backed)
 
-An in‑JVM key‑value store with enough Raft consensus to feel distributed—without the cloud bill. 🤑
+An in‑JVM key‑value store with enough Raft consensus to feel distributed, without the cloud bill.
 
 ---
 
