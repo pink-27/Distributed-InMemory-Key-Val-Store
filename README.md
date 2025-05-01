@@ -9,7 +9,7 @@ An in‑JVM key‑value store with enough Raft consensus to feel distributed, wi
 - **Raft Consensus**: real leader elections (no emperor’s new clothes), AppendEntries, terms, and quorum-based commits.
 - **Heartbeat Scheduler**: leader’s metronome—beats every `beatTime` ms to keep followers from staging a coup.
 - **Persistent Metadata**: `currentTerm` & `votedFor` on disk (`metaX.txt`), so crashes don’t invent ghost votes.
-- **Durable Command Log**: every `PUT` is immortalized in `log0X.txt`—replayed on restart, because amnesia is cheating.
+- **Durable Command Log**: every `PUT` is immortalized in `log0X.txt`,replayed on restart, because amnesia is cheating.
 
 ---
 
